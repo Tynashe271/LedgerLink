@@ -148,6 +148,6 @@ class RegisterController extends Controller
         $request->session()->put('current_company_id', $membership->company_id);
         $request->session()->put('current_company_role', $membership->role);
 
-        return redirect()->route('dashboard')->with('status', 'Welcome to BranchLedger — your company is set up.');
+        return redirect()->route('onboarding.welcome');
     }
 }

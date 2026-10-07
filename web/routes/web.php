@@ -7,6 +7,7 @@ use App\Http\Controllers\BranchOverviewController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GatewayController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/companies/select', [CompanyController::class, 'choose'])->name('companies.choose');
 
     Route::middleware('company.selected')->group(function () {
+        Route::get('/welcome', [OnboardingController::class, 'welcome'])->name('onboarding.welcome');
+        Route::get('/welcome/download', [OnboardingController::class, 'download'])->name('onboarding.download');
+
         Route::get('/dashboard', [DashboardController::class, 'show'])->name('dashboard');
         Route::get('/branch-overview', [BranchOverviewController::class, 'show'])->name('branch-overview');
 
