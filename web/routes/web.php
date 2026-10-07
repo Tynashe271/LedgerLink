@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
         // catalogue). Each just renders its shell; data is loaded and
         // posted client-side through the /api gateway below, the same
         // pattern the dashboard already uses.
+        Route::get('/transactions', [WorkspaceController::class, 'transactions'])->name('workspace.transactions');
         Route::get('/sales', [WorkspaceController::class, 'sales'])->name('workspace.sales');
         Route::get('/expenses', [WorkspaceController::class, 'expenses'])->name('workspace.expenses');
         Route::get('/purchases', [WorkspaceController::class, 'purchases'])->name('workspace.purchases');
