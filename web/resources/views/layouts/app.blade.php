@@ -140,6 +140,7 @@
     </style>
 </head>
 <body>
+@if(isset($company))
 <div class="app-shell">
     <aside class="sidebar">
         <span class="brand">BranchLedger</span>
@@ -187,6 +188,11 @@
         </div>
     </div>
 </div>
+@else
+<div class="content">
+    @yield('body')
+</div>
+@endif
 <script type="module">
     import { outboxSummary, startAutoSync } from '/js/offline/sync.js';
 
@@ -196,6 +202,7 @@
 
     function updateStatusDot() {
         const dot = document.getElementById('sync-dot');
+        if (!dot) return; // no sync status on guest/pre-company pages (login, forgot/reset password, company picker)
         const label = document.getElementById('sync-label');
         outboxSummary().then(({ counts, lastSyncAt }) => {
             const unsynced = counts.pending + counts.syncing + counts.failed + counts.rejected;
