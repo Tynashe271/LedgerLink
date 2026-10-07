@@ -92,18 +92,18 @@ func handleListTransactions(deps Deps) http.HandlerFunc {
 // --- GET /api/v1/approvals ----------------------------------------------------
 
 type approvalSummaryResponse struct {
-	ApprovalID              uuid.UUID `json:"approval_id"`
-	TransactionID           uuid.UUID `json:"transaction_id"`
-	BranchID                uuid.UUID `json:"branch_id"`
-	BranchName              string    `json:"branch_name"`
-	DocumentType            string    `json:"document_type"`
-	DocumentDate            string    `json:"document_date"`
-	NetAmount               string    `json:"net_amount"`
-	CurrencyCode            string    `json:"currency_code"`
-	Explanation             string    `json:"explanation,omitempty"`
-	RequestedByName         string    `json:"requested_by_name"`
-	RequestedAt             time.Time `json:"requested_at"`
-	RecordVersionAtRequest  int       `json:"record_version_at_request"`
+	ApprovalID             uuid.UUID `json:"approval_id"`
+	TransactionID          uuid.UUID `json:"transaction_id"`
+	BranchID               uuid.UUID `json:"branch_id"`
+	BranchName             string    `json:"branch_name"`
+	DocumentType           string    `json:"document_type"`
+	DocumentDate           string    `json:"document_date"`
+	NetAmount              string    `json:"net_amount"`
+	CurrencyCode           string    `json:"currency_code"`
+	Explanation            string    `json:"explanation,omitempty"`
+	RequestedByName        string    `json:"requested_by_name"`
+	RequestedAt            time.Time `json:"requested_at"`
+	RecordVersionAtRequest int       `json:"record_version_at_request"`
 }
 
 // handleListApprovals serves GET /api/v1/approvals — the Approvals screen's

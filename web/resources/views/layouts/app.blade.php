@@ -153,6 +153,7 @@
             <a href="{{ route('workspace.transfers') }}" class="{{ request()->routeIs('workspace.transfers') ? 'active' : '' }}">Transfers</a>
             <a href="{{ route('workspace.stock') }}" class="{{ request()->routeIs('workspace.stock') ? 'active' : '' }}">Stock</a>
             <a href="{{ route('workspace.closes') }}" class="{{ request()->routeIs('workspace.closes') ? 'active' : '' }}">Daily close</a>
+            <a href="{{ route('workspace.reconciliation') }}" class="{{ request()->routeIs('workspace.reconciliation') ? 'active' : '' }}">Reconciliation</a>
             <a href="{{ route('workspace.sync-centre') }}" class="{{ request()->routeIs('workspace.sync-centre') ? 'active' : '' }}">Sync centre</a>
             <div class="section-label">Catalogue</div>
             <a href="{{ route('workspace.products') }}" class="{{ request()->routeIs('workspace.products') ? 'active' : '' }}">Products</a>

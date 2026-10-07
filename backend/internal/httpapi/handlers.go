@@ -55,16 +55,16 @@ type transactionLineRequest struct {
 }
 
 type postTransactionRequest struct {
-	OperationID      uuid.UUID               `json:"operation_id"`
-	BranchID         uuid.UUID               `json:"branch_id"`
-	DocumentType     string                  `json:"document_type"`
-	DocumentDate     string                  `json:"document_date"` // YYYY-MM-DD, company-local
-	CurrencyCode     string                  `json:"currency_code"`
-	ExchangeRate     decimal.Decimal         `json:"exchange_rate"`
-	CounterpartyID   *uuid.UUID              `json:"counterparty_id"`
-	PaymentAccountID *uuid.UUID              `json:"payment_account_id"`
-	SourceReference  string                  `json:"source_reference"`
-	Explanation      string                  `json:"explanation"`
+	OperationID      uuid.UUID                `json:"operation_id"`
+	BranchID         uuid.UUID                `json:"branch_id"`
+	DocumentType     string                   `json:"document_type"`
+	DocumentDate     string                   `json:"document_date"` // YYYY-MM-DD, company-local
+	CurrencyCode     string                   `json:"currency_code"`
+	ExchangeRate     decimal.Decimal          `json:"exchange_rate"`
+	CounterpartyID   *uuid.UUID               `json:"counterparty_id"`
+	PaymentAccountID *uuid.UUID               `json:"payment_account_id"`
+	SourceReference  string                   `json:"source_reference"`
+	Explanation      string                   `json:"explanation"`
 	Lines            []transactionLineRequest `json:"lines"`
 
 	// Populated only when DocumentType == "transfer" (FR07 dispatch side).
@@ -524,18 +524,18 @@ func handleTransferReceive(deps Deps) http.HandlerFunc {
 // --- POST /api/v1/exports, GET /api/v1/exports/{id} --------------------------
 
 type createExportRequest struct {
-	ExportType string          `json:"export_type"`
-	BranchID   *uuid.UUID      `json:"branch_id"`
-	From       string          `json:"from"`
-	To         string          `json:"to"`
-	Currency   string          `json:"currency"`
+	ExportType string     `json:"export_type"`
+	BranchID   *uuid.UUID `json:"branch_id"`
+	From       string     `json:"from"`
+	To         string     `json:"to"`
+	Currency   string     `json:"currency"`
 }
 
 type exportResponse struct {
-	ExportID  uuid.UUID `json:"export_id"`
-	Status    string    `json:"status"`
-	RowCount  *int      `json:"row_count,omitempty"`
-	ErrorCode string    `json:"error_code,omitempty"`
+	ExportID  uuid.UUID  `json:"export_id"`
+	Status    string     `json:"status"`
+	RowCount  *int       `json:"row_count,omitempty"`
+	ErrorCode string     `json:"error_code,omitempty"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 

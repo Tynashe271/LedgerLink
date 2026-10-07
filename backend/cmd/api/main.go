@@ -21,6 +21,7 @@ import (
 	"github.com/ledgerlink/branchledger/backend/internal/exports"
 	"github.com/ledgerlink/branchledger/backend/internal/httpapi"
 	"github.com/ledgerlink/branchledger/backend/internal/listings"
+	"github.com/ledgerlink/branchledger/backend/internal/reconciliation"
 	"github.com/ledgerlink/branchledger/backend/internal/reporting"
 	"github.com/ledgerlink/branchledger/backend/internal/storage"
 	"github.com/ledgerlink/branchledger/backend/internal/sync"
@@ -53,16 +54,18 @@ func main() {
 	exportsSvc := exports.NewService(db.Exports())
 	listingsSvc := listings.NewService(db.Listings())
 	catalogSvc := catalog.NewService(db.Catalog())
+	reconciliationSvc := reconciliation.NewService(db.Reconciliation())
 
 	router := httpapi.NewRouter(httpapi.Deps{
-		Verifier:      verifier,
-		AccountingSvc: accountingSvc,
-		Pusher:        pusher,
-		Puller:        puller,
-		ReportingSvc:  reportingSvc,
-		ExportsSvc:    exportsSvc,
-		ListingsSvc:   listingsSvc,
-		CatalogSvc:    catalogSvc,
+		Verifier:          verifier,
+		AccountingSvc:     accountingSvc,
+		Pusher:            pusher,
+		Puller:            puller,
+		ReportingSvc:      reportingSvc,
+		ExportsSvc:        exportsSvc,
+		ListingsSvc:       listingsSvc,
+		CatalogSvc:        catalogSvc,
+		ReconciliationSvc: reconciliationSvc,
 	})
 
 	server := &http.Server{

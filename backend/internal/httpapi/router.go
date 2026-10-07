@@ -17,6 +17,7 @@ import (
 	"github.com/ledgerlink/branchledger/backend/internal/catalog"
 	"github.com/ledgerlink/branchledger/backend/internal/exports"
 	"github.com/ledgerlink/branchledger/backend/internal/listings"
+	"github.com/ledgerlink/branchledger/backend/internal/reconciliation"
 	"github.com/ledgerlink/branchledger/backend/internal/reporting"
 	"github.com/ledgerlink/branchledger/backend/internal/sync"
 )
@@ -30,14 +31,15 @@ const MaxRequestBodyBytes = 1 << 20 // 1 MiB
 // Deps bundles everything the router needs to construct handlers. Built in
 // cmd/api/main.go once the storage layer and services are wired up.
 type Deps struct {
-	Verifier      *auth.Verifier
-	AccountingSvc *accounting.Service
-	Pusher        *sync.Pusher
-	Puller        *sync.Puller
-	ReportingSvc  *reporting.Service
-	ExportsSvc    *exports.Service
-	ListingsSvc   *listings.Service
-	CatalogSvc    *catalog.Service
+	Verifier          *auth.Verifier
+	AccountingSvc     *accounting.Service
+	Pusher            *sync.Pusher
+	Puller            *sync.Puller
+	ReportingSvc      *reporting.Service
+	ExportsSvc        *exports.Service
+	ListingsSvc       *listings.Service
+	CatalogSvc        *catalog.Service
+	ReconciliationSvc *reconciliation.Service
 }
 
 // NewRouter builds the complete /api/v1 surface. Every route requires a valid
@@ -65,6 +67,12 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/approvals", handleListApprovals(deps))
 		r.Get("/transfers", handleListTransfers(deps))
 		r.Get("/stock", handleListStock(deps))
+
+		r.Get("/reconciliation", handleReconciliationOverview(deps))
+		r.Post("/reconciliation/items", handleAddStatementItem(deps))
+		r.Post("/reconciliation/items/{id}/match", handleMatchStatementItem(deps))
+		r.Post("/reconciliation/items/{id}/unmatch", handleUnmatchStatementItem(deps))
+		r.Post("/reconciliation/auto-match", handleAutoMatch(deps))
 
 		r.Get("/products", handleListProducts(deps))
 		r.Post("/products", handleCreateProduct(deps))

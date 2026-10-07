@@ -68,6 +68,11 @@ class WorkspaceController extends Controller
         return $this->render($request, 'workspace.stock', 'Stock');
     }
 
+    public function reconciliation(Request $request): View
+    {
+        return $this->render($request, 'workspace.reconciliation', 'Reconciliation');
+    }
+
     private function render(Request $request, string $view, string $title): View
     {
         $companyId = $request->session()->get('current_company_id');
