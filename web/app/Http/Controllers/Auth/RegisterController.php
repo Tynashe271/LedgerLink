@@ -17,7 +17,10 @@ use Illuminate\View\View;
 /**
  * Self-service sign-up: System Documentation 6.2's "Company setup" module
  * ("Company name, branch code, category, timezone, financial year,
- * reporting currency, enabled modules"). This is the one place Laravel is
+ * reporting currency, enabled modules"), plus an optional ZIMRA tax number
+ * field — informational only; section 3.3/8.3 is explicit that Zimbabwe tax
+ * and fiscalisation obligations need separate verification, so this is
+ * never validated against ZIMRA here. This is the one place Laravel is
  * allowed to write companies/branches/memberships directly rather than
  * going through Go's internal/settings — every other write to those tables
  * requires an existing membership to sign a delegation token from, and a
@@ -38,6 +41,7 @@ class RegisterController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:12', 'confirmed'],
             'company_name' => ['required', 'string', 'max:160'],
+            'zimra_tax_number' => ['nullable', 'string', 'max:20'],
             'primary_category' => ['required', 'string', 'max:40'],
             'branch_name' => ['required', 'string', 'max:160'],
             'branch_code' => ['required', 'string', 'max:32'],
@@ -59,6 +63,7 @@ class RegisterController extends Controller
                 'reporting_currency' => strtoupper($validated['reporting_currency']),
                 'timezone' => $validated['timezone'],
                 'financial_year_start' => $validated['financial_year_start'],
+                'zimra_tax_number' => $validated['zimra_tax_number'] ?? null,
             ]);
 
             Branch::create([

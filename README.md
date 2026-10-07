@@ -75,6 +75,8 @@ podman exec branchledger-postgres psql -U branchledger -d branchledger -f databa
 podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/migrations/0002_workflow_extensions.up.sql
 podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/migrations/0003_membership_delegations.up.sql
 podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/migrations/0004_products_customers_tracking.up.sql
+podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/migrations/0005_reconciliation.up.sql
+podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/migrations/0006_company_tax_registration.up.sql
 podman exec branchledger-postgres psql -U branchledger -d branchledger -f database/seeds/dev_seed.sql
 
 cd web && php artisan migrate   # Laravel's own tables: sessions, cache, jobs

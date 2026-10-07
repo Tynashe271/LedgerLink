@@ -67,6 +67,10 @@
             <label for="financial_year_start">Financial year start</label>
             <input id="financial_year_start" name="financial_year_start" type="date" value="{{ old('financial_year_start', now()->startOfYear()->toDateString()) }}" required>
 
+            <label for="zimra_tax_number" style="margin-top:12px;">ZIMRA tax number (BP number)</label>
+            <input id="zimra_tax_number" name="zimra_tax_number" type="text" value="{{ old('zimra_tax_number') }}" maxlength="20" placeholder="Optional — add once registered with ZIMRA">
+            <p class="muted" style="margin-top:4px;font-size:0.85em;">Optional. Not validated against ZIMRA — record it here for your own reference and documents.</p>
+
             <h2 style="margin-top:20px;">Your main branch</h2>
             <div class="grid grid-2">
                 <div>

@@ -22,6 +22,7 @@ class Company extends Model
         'reporting_currency',
         'timezone',
         'financial_year_start',
+        'zimra_tax_number',
     ];
 
     protected $casts = [
