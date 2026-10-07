@@ -4,8 +4,10 @@
 <h1>Settings</h1>
 <p class="page-subtitle">
     Company, accounts, devices and limits (<code>GET/PUT /api/v1/settings/company</code>,
-    <code>GET/POST /api/v1/settings/accounts</code>, <code>/devices</code>, <code>/memberships</code>).
-    Every change here is administrative, not a posting, and is itself an authorised, auditable action.
+    <code>GET/POST /api/v1/settings/branches</code>, <code>/accounts</code>, <code>/devices</code>,
+    <code>/memberships</code>, <code>/users</code>).
+    Every change here is administrative, not a posting, and is itself an authorised, auditable action
+    (see the <a href="{{ route('workspace.audit-log') }}">audit log</a>).
 </p>
 
 <div class="panel">
@@ -35,6 +37,41 @@
         <p class="muted">Reporting currency (<span id="company_currency"></span>) and status (<span id="company_status"></span>) are not editable here &mdash; changing a reporting currency after journals have posted needs a reviewed conversion, not a field edit.</p>
         <button type="submit">Save company profile</button>
     </form>
+</div>
+
+<div class="panel">
+    <h2>Branches</h2>
+    <div id="branch-result"></div>
+    <form id="branch-form">
+        <div class="grid grid-2">
+            <div>
+                <label for="branch_name">Name</label>
+                <input id="branch_name" type="text" required>
+            </div>
+            <div>
+                <label for="branch_code">Code</label>
+                <input id="branch_code" type="text" placeholder="e.g. NORTH" required>
+            </div>
+        </div>
+        <div class="grid grid-2">
+            <div>
+                <label for="branch_category">Category</label>
+                <input id="branch_category" type="text" placeholder="e.g. retail_wholesale" required>
+            </div>
+            <div>
+                <label for="branch_is_main">&nbsp;</label>
+                <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
+                    <input id="branch_is_main" type="checkbox" style="width:auto;"> Main branch
+                </label>
+            </div>
+        </div>
+        <p class="muted">Adding a new branch only &mdash; exactly one branch may be the main branch, and a company's branches can't be edited here once created.</p>
+        <button type="submit">Add branch</button>
+    </form>
+    <table id="branches-table">
+        <thead><tr><th>Name</th><th>Code</th><th>Category</th><th>Main</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+    </table>
 </div>
 
 <div class="panel">
@@ -81,10 +118,72 @@
 <div class="panel">
     <h2>Devices</h2>
     <div id="device-result"></div>
+    <form id="device-form">
+        <div class="grid grid-2">
+            <div>
+                <label for="device_branch_id">Branch</label>
+                <select id="device_branch_id" required></select>
+            </div>
+            <div>
+                <label for="device_user_id">User</label>
+                <select id="device_user_id" required></select>
+            </div>
+        </div>
+        <div class="grid grid-2">
+            <div>
+                <label for="device_label">Label</label>
+                <input id="device_label" type="text" placeholder="e.g. Till 1 tablet" required>
+            </div>
+            <div>
+                <label for="device_lease_days">Lease (days)</label>
+                <input id="device_lease_days" type="number" value="7" min="1" required>
+            </div>
+        </div>
+        <button type="submit">Enroll device</button>
+    </form>
     <table id="devices-table">
         <thead><tr><th>Branch</th><th>User</th><th>Label</th><th>Offline writer</th><th>Lease expires</th><th>Last sync</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody></tbody>
     </table>
+</div>
+
+<div class="panel">
+    <h2>Add a user</h2>
+    <div id="user-result"></div>
+    <form id="user-form">
+        <div class="grid grid-2">
+            <div>
+                <label for="user_email">Email</label>
+                <input id="user_email" type="email" required>
+            </div>
+            <div>
+                <label for="user_full_name">Full name</label>
+                <input id="user_full_name" type="text" required>
+            </div>
+        </div>
+        <div class="grid grid-2">
+            <div>
+                <label for="user_role">Role</label>
+                <select id="user_role" required>
+                    <option value="owner">Owner</option>
+                    <option value="general_manager">General manager</option>
+                    <option value="accountant">Accountant</option>
+                    <option value="branch_manager">Branch manager</option>
+                    <option value="staff" selected>Staff</option>
+                </select>
+            </div>
+            <div>
+                <label for="user_approval_limit">Approval limit</label>
+                <input id="user_approval_limit" type="number" step="0.01" placeholder="Unlimited">
+            </div>
+        </div>
+        <label for="user_branch_scope">Branches (none selected = all branches)</label>
+        <select id="user_branch_scope" multiple style="height:80px;"></select>
+        <p class="muted" style="margin-top:4px;">
+            The new user has no usable password yet &mdash; they request their own via "Forgot your password?" on the login page.
+        </p>
+        <button type="submit">Add user</button>
+    </form>
 </div>
 
 <div class="panel">
@@ -137,6 +236,44 @@ document.getElementById('company-form').addEventListener('submit', async (e) => 
     if (status === 200) { resultEl.innerHTML = '<div class="status">Saved.</div>'; } else { rejected(resultEl, status, body); }
 });
 
+// --- Branches --------------------------------------------------------------
+
+let lastBranches = [];
+
+async function loadBranches() {
+    const { status, body } = await apiFetch('v1/settings/branches');
+    const tbody = document.querySelector('#branches-table tbody');
+    if (status !== 200) { tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Could not load branches.</td></tr>'; return; }
+    lastBranches = body;
+    tbody.innerHTML = body.length ? body.map(b => `<tr>
+        <td>${escapeHtml(b.name)}</td><td>${escapeHtml(b.code)}</td><td>${escapeHtml(b.category)}</td>
+        <td>${b.is_main_branch ? 'Yes' : ''}</td><td>${escapeHtml(b.status)}</td>
+    </tr>`).join('') : '<tr class="empty-row"><td colspan="5">No branches.</td></tr>';
+
+    const branchOptions = body.map(b => `<option value="${b.id}">${escapeHtml(b.name)}${b.is_main_branch ? ' (main)' : ''}</option>`).join('');
+    document.getElementById('device_branch_id').innerHTML = branchOptions;
+    document.getElementById('user_branch_scope').innerHTML = branchOptions;
+}
+
+document.getElementById('branch-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resultEl = document.getElementById('branch-result');
+    const payload = {
+        name: document.getElementById('branch_name').value,
+        code: document.getElementById('branch_code').value,
+        category: document.getElementById('branch_category').value,
+        is_main_branch: document.getElementById('branch_is_main').checked,
+    };
+    const { status, body } = await apiFetch('v1/settings/branches', { method: 'POST', body: JSON.stringify(payload) });
+    if (status === 201) {
+        resultEl.innerHTML = '<div class="status">Branch added.</div>';
+        e.target.reset();
+        loadBranches();
+    } else {
+        rejected(resultEl, status, body);
+    }
+});
+
 // --- Chart of accounts ---------------------------------------------------
 
 async function loadAccounts() {
@@ -187,6 +324,25 @@ async function loadDevices() {
     </tr>`).join('') : '<tr class="empty-row"><td colspan="8">No enrolled devices.</td></tr>';
 }
 
+document.getElementById('device-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resultEl = document.getElementById('device-result');
+    const payload = {
+        branch_id: document.getElementById('device_branch_id').value,
+        user_id: document.getElementById('device_user_id').value,
+        label: document.getElementById('device_label').value,
+        lease_days: Number(document.getElementById('device_lease_days').value),
+    };
+    const { status, body } = await apiFetch('v1/settings/devices', { method: 'POST', body: JSON.stringify(payload) });
+    if (status === 201) {
+        resultEl.innerHTML = '<div class="status">Device enrolled.</div>';
+        e.target.reset();
+        loadDevices();
+    } else {
+        rejected(resultEl, status, body);
+    }
+});
+
 window.revokeDevice = async (id) => {
     const resultEl = document.getElementById('device-result');
     const { status, body } = await apiFetch(`v1/settings/devices/${id}/revoke`, { method: 'POST', body: '{}' });
@@ -213,6 +369,8 @@ async function loadMemberships() {
         <td><input id="limit-${m.id}" type="number" step="0.01" style="width:120px;" value="${m.approval_limit ?? ''}" placeholder="Unlimited"></td>
         <td><button type="button" class="secondary" onclick="window.saveLimit('${m.id}')">Save</button></td>
     </tr>`).join('') : '<tr class="empty-row"><td colspan="5">No users.</td></tr>';
+
+    document.getElementById('device_user_id').innerHTML = body.map(m => `<option value="${m.user_id}">${escapeHtml(m.user_name)}</option>`).join('');
 }
 
 window.saveLimit = async (id) => {
@@ -224,7 +382,32 @@ window.saveLimit = async (id) => {
     if (status === 200) { resultEl.innerHTML = '<div class="status">Approval limit saved.</div>'; } else { rejected(resultEl, status, body); }
 };
 
+// --- Add a user ------------------------------------------------------------
+
+document.getElementById('user-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resultEl = document.getElementById('user-result');
+    const branchScope = Array.from(document.getElementById('user_branch_scope').selectedOptions).map(o => o.value);
+    const limitRaw = document.getElementById('user_approval_limit').value;
+    const payload = {
+        email: document.getElementById('user_email').value,
+        full_name: document.getElementById('user_full_name').value,
+        role: document.getElementById('user_role').value,
+        branch_scope: branchScope,
+        approval_limit: limitRaw === '' ? null : limitRaw,
+    };
+    const { status, body } = await apiFetch('v1/settings/users', { method: 'POST', body: JSON.stringify(payload) });
+    if (status === 201) {
+        resultEl.innerHTML = '<div class="status">User added. They can request a password via "Forgot your password?" on the login page.</div>';
+        e.target.reset();
+        loadMemberships();
+    } else {
+        rejected(resultEl, status, body);
+    }
+});
+
 loadCompany();
+loadBranches();
 loadAccounts();
 loadDevices();
 loadMemberships();

@@ -24,6 +24,14 @@ func writeSettingsErr(w http.ResponseWriter, requestID string, action string, er
 		writeError(w, http.StatusNotFound, "not_found")
 	case errors.Is(err, settings.ErrDuplicateCode):
 		writeError(w, http.StatusConflict, "duplicate_code")
+	case errors.Is(err, settings.ErrDuplicateBranchCode):
+		writeError(w, http.StatusConflict, "duplicate_branch_code")
+	case errors.Is(err, settings.ErrMainBranchExists):
+		writeError(w, http.StatusConflict, "main_branch_exists")
+	case errors.Is(err, settings.ErrDuplicateEmail):
+		writeError(w, http.StatusConflict, "duplicate_email")
+	case errors.Is(err, settings.ErrInvalidRole):
+		writeError(w, http.StatusBadRequest, "invalid_role")
 	default:
 		log.Printf("request_id=%s %s error: %v", requestID, action, err)
 		writeError(w, http.StatusInternalServerError, "internal_error")
@@ -100,6 +108,73 @@ func handleUpdateCompanyProfile(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"accepted": true})
+	}
+}
+
+// --- Branches --------------------------------------------------------------
+
+type branchResponse struct {
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Code         string    `json:"code"`
+	Category     string    `json:"category"`
+	IsMainBranch bool      `json:"is_main_branch"`
+	Status       string    `json:"status"`
+}
+
+func toBranchResponse(b settings.Branch) branchResponse {
+	return branchResponse{ID: b.ID, Name: b.Name, Code: b.Code, Category: b.Category, IsMainBranch: b.IsMainBranch, Status: b.Status}
+}
+
+func handleListSettingsBranches(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		branches, err := deps.SettingsSvc.Branches(r.Context(), scope)
+		if err != nil {
+			writeSettingsErr(w, scope.RequestID, "list_branches", err)
+			return
+		}
+		out := make([]branchResponse, 0, len(branches))
+		for _, b := range branches {
+			out = append(out, toBranchResponse(b))
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type addBranchRequest struct {
+	Name         string `json:"name"`
+	Code         string `json:"code"`
+	Category     string `json:"category"`
+	IsMainBranch bool   `json:"is_main_branch"`
+}
+
+func handleAddBranch(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		var req addBranchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "malformed_request")
+			return
+		}
+		if req.Name == "" || req.Code == "" || req.Category == "" {
+			writeError(w, http.StatusBadRequest, "missing_required_field")
+			return
+		}
+		branch, err := deps.SettingsSvc.AddBranch(r.Context(), scope, settings.AddBranchInput{
+			Name: req.Name, Code: req.Code, Category: req.Category, IsMainBranch: req.IsMainBranch,
+		})
+		if err != nil {
+			writeSettingsErr(w, scope.RequestID, "add_branch", err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, toBranchResponse(branch))
 	}
 }
 
@@ -212,6 +287,39 @@ func handleListDevices(deps Deps) http.HandlerFunc {
 			out = append(out, toDeviceResponse(d))
 		}
 		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type enrollDeviceRequest struct {
+	BranchID  uuid.UUID `json:"branch_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Label     string    `json:"label"`
+	LeaseDays int       `json:"lease_days"`
+}
+
+func handleEnrollDevice(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		var req enrollDeviceRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "malformed_request")
+			return
+		}
+		if req.BranchID == uuid.Nil || req.UserID == uuid.Nil || req.Label == "" {
+			writeError(w, http.StatusBadRequest, "missing_required_field")
+			return
+		}
+		device, err := deps.SettingsSvc.EnrollDevice(r.Context(), scope, settings.EnrollDeviceInput{
+			BranchID: req.BranchID, UserID: req.UserID, Label: req.Label, LeaseDays: req.LeaseDays,
+		})
+		if err != nil {
+			writeSettingsErr(w, scope.RequestID, "enroll_device", err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, toDeviceResponse(device))
 	}
 }
 
@@ -334,5 +442,49 @@ func handleSetApprovalLimit(deps Deps) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"accepted": true})
+	}
+}
+
+type createUserRequest struct {
+	Email         string      `json:"email"`
+	FullName      string      `json:"full_name"`
+	Role          string      `json:"role"`
+	BranchScope   []uuid.UUID `json:"branch_scope"`
+	ApprovalLimit *string     `json:"approval_limit"`
+}
+
+func handleCreateUser(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		var req createUserRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "malformed_request")
+			return
+		}
+		if req.Email == "" || req.FullName == "" || req.Role == "" {
+			writeError(w, http.StatusBadRequest, "missing_required_field")
+			return
+		}
+		var limit *decimal.Decimal
+		if req.ApprovalLimit != nil {
+			parsed, err := decimal.NewFromString(*req.ApprovalLimit)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_approval_limit")
+				return
+			}
+			limit = &parsed
+		}
+
+		membership, err := deps.SettingsSvc.CreateUser(r.Context(), scope, settings.CreateUserInput{
+			Email: req.Email, FullName: req.FullName, Role: req.Role, BranchScope: req.BranchScope, ApprovalLimit: limit,
+		})
+		if err != nil {
+			writeSettingsErr(w, scope.RequestID, "create_user", err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, toMembershipResponse(membership))
 	}
 }

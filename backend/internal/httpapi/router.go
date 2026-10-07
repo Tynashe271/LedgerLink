@@ -81,12 +81,16 @@ func NewRouter(deps Deps) http.Handler {
 
 		r.Get("/settings/company", handleGetCompanyProfile(deps))
 		r.Put("/settings/company", handleUpdateCompanyProfile(deps))
+		r.Get("/settings/branches", handleListSettingsBranches(deps))
+		r.Post("/settings/branches", handleAddBranch(deps))
 		r.Get("/settings/accounts", handleListSettingsAccounts(deps))
 		r.Post("/settings/accounts", handleAddAccount(deps))
 		r.Get("/settings/devices", handleListDevices(deps))
+		r.Post("/settings/devices", handleEnrollDevice(deps))
 		r.Post("/settings/devices/{id}/revoke", handleRevokeDevice(deps))
 		r.Post("/settings/devices/{id}/set-offline-writer", handleSetOfflineWriter(deps))
 		r.Get("/settings/memberships", handleListMemberships(deps))
+		r.Post("/settings/users", handleCreateUser(deps))
 		r.Post("/settings/memberships/{id}/approval-limit", handleSetApprovalLimit(deps))
 
 		r.Get("/products", handleListProducts(deps))

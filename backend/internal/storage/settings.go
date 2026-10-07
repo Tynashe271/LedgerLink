@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,6 +40,54 @@ func (r *settingsRepo) UpdateCompanyProfile(ctx context.Context, companyID uuid.
 		WHERE id = $1`,
 		companyID, in.Name, in.PrimaryCategory, in.Timezone, in.FinancialYearStart)
 	return err
+}
+
+// --- Branches --------------------------------------------------------------
+
+func (r *settingsRepo) ListBranches(ctx context.Context, companyID uuid.UUID) ([]settings.Branch, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT id, name, code, category, is_main_branch, status
+		FROM branches WHERE company_id = $1 ORDER BY is_main_branch DESC, name`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []settings.Branch
+	for rows.Next() {
+		var b settings.Branch
+		if err := rows.Scan(&b.ID, &b.Name, &b.Code, &b.Category, &b.IsMainBranch, &b.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (r *settingsRepo) BranchCodeExists(ctx context.Context, companyID uuid.UUID, code string) (bool, error) {
+	var exists bool
+	err := r.db.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM branches WHERE company_id = $1 AND code = $2)`, companyID, code,
+	).Scan(&exists)
+	return exists, err
+}
+
+func (r *settingsRepo) HasMainBranch(ctx context.Context, companyID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM branches WHERE company_id = $1 AND is_main_branch)`, companyID,
+	).Scan(&exists)
+	return exists, err
+}
+
+func (r *settingsRepo) InsertBranch(ctx context.Context, companyID uuid.UUID, in settings.AddBranchInput) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.db.pool.QueryRow(ctx, `
+		INSERT INTO branches (company_id, name, code, category, is_main_branch)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		companyID, in.Name, in.Code, in.Category, in.IsMainBranch,
+	).Scan(&id)
+	return id, err
 }
 
 // --- Chart of accounts ----------------------------------------------------
@@ -114,6 +164,36 @@ func (r *settingsRepo) ListDevices(ctx context.Context, companyID uuid.UUID) ([]
 		out = append(out, dv)
 	}
 	return out, rows.Err()
+}
+
+func (r *settingsRepo) InsertDevice(ctx context.Context, companyID uuid.UUID, in settings.EnrollDeviceInput, leaseExpiresAt time.Time) (settings.Device, error) {
+	var deviceID uuid.UUID
+	err := r.db.pool.QueryRow(ctx, `
+		INSERT INTO devices (company_id, branch_id, user_id, label, lease_expires_at)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		companyID, in.BranchID, in.UserID, in.Label, leaseExpiresAt,
+	).Scan(&deviceID)
+	if err != nil {
+		return settings.Device{}, err
+	}
+	dv, _, err := r.GetDevice(ctx, companyID, deviceID)
+	return dv, err
+}
+
+func (r *settingsRepo) UserBelongsToCompany(ctx context.Context, companyID, userID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM memberships WHERE company_id = $1 AND user_id = $2 AND is_active)`,
+		companyID, userID).Scan(&exists)
+	return exists, err
+}
+
+func (r *settingsRepo) BranchBelongsToCompany(ctx context.Context, companyID, branchID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM branches WHERE company_id = $1 AND id = $2)`,
+		companyID, branchID).Scan(&exists)
+	return exists, err
 }
 
 func (r *settingsRepo) GetDevice(ctx context.Context, companyID, deviceID uuid.UUID) (settings.Device, bool, error) {
@@ -217,5 +297,60 @@ func (r *settingsRepo) SetApprovalLimit(ctx context.Context, companyID, membersh
 	_, err := r.db.pool.Exec(ctx, `
 		UPDATE memberships SET approval_limit = $3 WHERE company_id = $1 AND id = $2`,
 		companyID, membershipID, limit)
+	return err
+}
+
+func (r *settingsRepo) CreateUserAndMembership(ctx context.Context, companyID uuid.UUID, in settings.CreateUserInput, passwordHash string) (settings.Membership, error) {
+	branchScope := in.BranchScope
+	if branchScope == nil {
+		branchScope = []uuid.UUID{} // NOT NULL DEFAULT '{}' — never send SQL NULL for "unrestricted"
+	}
+
+	tx, err := r.db.pool.Begin(ctx)
+	if err != nil {
+		return settings.Membership{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var userID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		INSERT INTO users (email, password_hash, full_name)
+		VALUES ($1,$2,$3) RETURNING id`,
+		in.Email, passwordHash, in.FullName,
+	).Scan(&userID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return settings.Membership{}, settings.ErrDuplicateEmail
+		}
+		return settings.Membership{}, err
+	}
+
+	var membershipID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO memberships (user_id, company_id, role, branch_scope, approval_limit)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		userID, companyID, in.Role, branchScope, in.ApprovalLimit,
+	).Scan(&membershipID); err != nil {
+		return settings.Membership{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return settings.Membership{}, err
+	}
+
+	m, _, err := r.GetMembership(ctx, companyID, membershipID)
+	return m, err
+}
+
+func (r *settingsRepo) RecordAuditEvent(ctx context.Context, companyID, actorUserID uuid.UUID, eventType, recordType string, recordID uuid.UUID, details map[string]any) error {
+	payload, err := json.Marshal(details)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.pool.Exec(ctx, `
+		INSERT INTO audit_events (company_id, actor_user_id, event_type, record_type, record_id, details)
+		VALUES ($1,$2,$3,$4,$5,$6)`,
+		companyID, actorUserID, eventType, recordType, recordID, payload)
 	return err
 }

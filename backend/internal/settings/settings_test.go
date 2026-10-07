@@ -13,17 +13,24 @@ import (
 )
 
 type fakeStore struct {
-	profile     CompanyProfile
-	accounts    map[string]Account // keyed by code
-	devices     map[uuid.UUID]Device
-	memberships map[uuid.UUID]Membership
+	profile       CompanyProfile
+	branches      map[uuid.UUID]Branch
+	accounts      map[string]Account // keyed by code
+	devices       map[uuid.UUID]Device
+	memberships   map[uuid.UUID]Membership
+	validUsers    map[uuid.UUID]bool
+	validBranches map[uuid.UUID]bool
+	auditEvents   []string
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		accounts:    map[string]Account{},
-		devices:     map[uuid.UUID]Device{},
-		memberships: map[uuid.UUID]Membership{},
+		branches:      map[uuid.UUID]Branch{},
+		accounts:      map[string]Account{},
+		devices:       map[uuid.UUID]Device{},
+		validUsers:    map[uuid.UUID]bool{},
+		validBranches: map[uuid.UUID]bool{},
+		memberships:   map[uuid.UUID]Membership{},
 	}
 }
 
@@ -36,6 +43,35 @@ func (f *fakeStore) UpdateCompanyProfile(ctx context.Context, companyID uuid.UUI
 	f.profile.Timezone = in.Timezone
 	f.profile.FinancialYearStart = in.FinancialYearStart
 	return nil
+}
+
+func (f *fakeStore) ListBranches(ctx context.Context, companyID uuid.UUID) ([]Branch, error) {
+	var out []Branch
+	for _, b := range f.branches {
+		out = append(out, b)
+	}
+	return out, nil
+}
+func (f *fakeStore) BranchCodeExists(ctx context.Context, companyID uuid.UUID, code string) (bool, error) {
+	for _, b := range f.branches {
+		if b.Code == code {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeStore) HasMainBranch(ctx context.Context, companyID uuid.UUID) (bool, error) {
+	for _, b := range f.branches {
+		if b.IsMainBranch {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeStore) InsertBranch(ctx context.Context, companyID uuid.UUID, in AddBranchInput) (uuid.UUID, error) {
+	id := uuid.New()
+	f.branches[id] = Branch{ID: id, Name: in.Name, Code: in.Code, Category: in.Category, IsMainBranch: in.IsMainBranch, Status: "active"}
+	return id, nil
 }
 
 func (f *fakeStore) ListAccounts(ctx context.Context, companyID uuid.UUID) ([]Account, error) {
@@ -65,6 +101,17 @@ func (f *fakeStore) ListDevices(ctx context.Context, companyID uuid.UUID) ([]Dev
 func (f *fakeStore) GetDevice(ctx context.Context, companyID, deviceID uuid.UUID) (Device, bool, error) {
 	d, ok := f.devices[deviceID]
 	return d, ok, nil
+}
+func (f *fakeStore) InsertDevice(ctx context.Context, companyID uuid.UUID, in EnrollDeviceInput, leaseExpiresAt time.Time) (Device, error) {
+	d := Device{ID: uuid.New(), BranchID: in.BranchID, UserID: in.UserID, Label: in.Label, LeaseExpiresAt: leaseExpiresAt}
+	f.devices[d.ID] = d
+	return d, nil
+}
+func (f *fakeStore) UserBelongsToCompany(ctx context.Context, companyID, userID uuid.UUID) (bool, error) {
+	return f.validUsers[userID], nil
+}
+func (f *fakeStore) BranchBelongsToCompany(ctx context.Context, companyID, branchID uuid.UUID) (bool, error) {
+	return f.validBranches[branchID], nil
 }
 func (f *fakeStore) RevokeDevice(ctx context.Context, companyID, deviceID uuid.UUID) error {
 	d := f.devices[deviceID]
@@ -102,6 +149,25 @@ func (f *fakeStore) SetApprovalLimit(ctx context.Context, companyID, membershipI
 	m := f.memberships[membershipID]
 	m.ApprovalLimit = limit
 	f.memberships[membershipID] = m
+	return nil
+}
+func (f *fakeStore) CreateUserAndMembership(ctx context.Context, companyID uuid.UUID, in CreateUserInput, passwordHash string) (Membership, error) {
+	for _, m := range f.memberships {
+		if m.UserEmail == in.Email {
+			return Membership{}, ErrDuplicateEmail
+		}
+	}
+	id := uuid.New()
+	var branchNames []string
+	for range in.BranchScope {
+		branchNames = append(branchNames, "branch")
+	}
+	m := Membership{ID: id, UserID: uuid.New(), UserName: in.FullName, UserEmail: in.Email, Role: in.Role, BranchNames: branchNames, ApprovalLimit: in.ApprovalLimit, IsActive: true}
+	f.memberships[id] = m
+	return m, nil
+}
+func (f *fakeStore) RecordAuditEvent(ctx context.Context, companyID, actorUserID uuid.UUID, eventType, recordType string, recordID uuid.UUID, details map[string]any) error {
+	f.auditEvents = append(f.auditEvents, eventType)
 	return nil
 }
 
@@ -234,5 +300,105 @@ func TestSetApprovalLimitPermissions(t *testing.T) {
 	}
 	if !store.memberships[membershipID].ApprovalLimit.Equal(limit) {
 		t.Fatalf("approval limit not updated: %+v", store.memberships[membershipID])
+	}
+}
+
+func TestEnrollDeviceValidatesTenancyAndPermission(t *testing.T) {
+	store := newFakeStore()
+	svc := NewService(store)
+	branchID, userID := uuid.New(), uuid.New()
+	store.validBranches[branchID] = true
+	store.validUsers[userID] = true
+
+	if _, err := svc.EnrollDevice(context.Background(), scopeWith(tenancy.RoleStaff, nil), EnrollDeviceInput{BranchID: branchID, UserID: userID, Label: "Till 1"}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("staff: expected ErrForbidden, got %v", err)
+	}
+
+	foreignBranch := uuid.New() // not in store.validBranches
+	if _, err := svc.EnrollDevice(context.Background(), scopeWith(tenancy.RoleOwner, nil), EnrollDeviceInput{BranchID: foreignBranch, UserID: userID, Label: "Till 1"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign branch: expected ErrNotFound, got %v", err)
+	}
+
+	foreignUser := uuid.New() // not in store.validUsers
+	if _, err := svc.EnrollDevice(context.Background(), scopeWith(tenancy.RoleOwner, nil), EnrollDeviceInput{BranchID: branchID, UserID: foreignUser, Label: "Till 1"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign user: expected ErrNotFound, got %v", err)
+	}
+
+	dv, err := svc.EnrollDevice(context.Background(), scopeWith(tenancy.RoleOwner, nil), EnrollDeviceInput{BranchID: branchID, UserID: userID, Label: "Till 1"})
+	if err != nil {
+		t.Fatalf("owner EnrollDevice: %v", err)
+	}
+	if dv.Label != "Till 1" || dv.LeaseExpiresAt.Before(time.Now()) {
+		t.Fatalf("enrolled device looks wrong: %+v", dv)
+	}
+}
+
+func TestAddBranchOnlyOwnerAndOneMain(t *testing.T) {
+	store := newFakeStore()
+	svc := NewService(store)
+
+	if _, err := svc.AddBranch(context.Background(), scopeWith(tenancy.RoleAccountant, nil), AddBranchInput{Name: "North", Code: "NORTH", Category: "retail_wholesale"}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("accountant: expected ErrForbidden, got %v", err)
+	}
+
+	main, err := svc.AddBranch(context.Background(), scopeWith(tenancy.RoleOwner, nil), AddBranchInput{Name: "Main", Code: "MAIN", Category: "retail_wholesale", IsMainBranch: true})
+	if err != nil {
+		t.Fatalf("owner AddBranch (main): %v", err)
+	}
+	if !main.IsMainBranch {
+		t.Fatalf("expected IsMainBranch=true: %+v", main)
+	}
+
+	if _, err := svc.AddBranch(context.Background(), scopeWith(tenancy.RoleOwner, nil), AddBranchInput{Name: "Second main", Code: "MAIN2", Category: "retail_wholesale", IsMainBranch: true}); !errors.Is(err, ErrMainBranchExists) {
+		t.Fatalf("second main branch: expected ErrMainBranchExists, got %v", err)
+	}
+
+	if _, err := svc.AddBranch(context.Background(), scopeWith(tenancy.RoleOwner, nil), AddBranchInput{Name: "Dup code", Code: "MAIN", Category: "retail_wholesale"}); !errors.Is(err, ErrDuplicateBranchCode) {
+		t.Fatalf("duplicate code: expected ErrDuplicateBranchCode, got %v", err)
+	}
+
+	sub, err := svc.AddBranch(context.Background(), scopeWith(tenancy.RoleOwner, nil), AddBranchInput{Name: "Sub", Code: "SUB", Category: "retail_wholesale"})
+	if err != nil {
+		t.Fatalf("owner AddBranch (sub): %v", err)
+	}
+	if sub.IsMainBranch {
+		t.Fatalf("expected IsMainBranch=false: %+v", sub)
+	}
+}
+
+func TestCreateUserValidatesRoleBranchAndPermission(t *testing.T) {
+	store := newFakeStore()
+	svc := NewService(store)
+	branchID := uuid.New()
+	store.validBranches[branchID] = true
+
+	in := CreateUserInput{Email: "new@example.com", FullName: "New Person", Role: "staff", BranchScope: []uuid.UUID{branchID}}
+
+	if _, err := svc.CreateUser(context.Background(), scopeWith(tenancy.RoleAccountant, nil), in); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("accountant: expected ErrForbidden, got %v", err)
+	}
+
+	badRole := in
+	badRole.Role = "platform_admin"
+	if _, err := svc.CreateUser(context.Background(), scopeWith(tenancy.RoleOwner, nil), badRole); !errors.Is(err, ErrInvalidRole) {
+		t.Fatalf("platform_admin role: expected ErrInvalidRole, got %v", err)
+	}
+
+	badBranch := in
+	badBranch.BranchScope = []uuid.UUID{uuid.New()} // not in store.validBranches
+	if _, err := svc.CreateUser(context.Background(), scopeWith(tenancy.RoleOwner, nil), badBranch); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("foreign branch: expected ErrNotFound, got %v", err)
+	}
+
+	m, err := svc.CreateUser(context.Background(), scopeWith(tenancy.RoleOwner, nil), in)
+	if err != nil {
+		t.Fatalf("owner CreateUser: %v", err)
+	}
+	if m.UserEmail != "new@example.com" || m.Role != "staff" {
+		t.Fatalf("created membership looks wrong: %+v", m)
+	}
+
+	if _, err := svc.CreateUser(context.Background(), scopeWith(tenancy.RoleOwner, nil), in); !errors.Is(err, ErrDuplicateEmail) {
+		t.Fatalf("duplicate email: expected ErrDuplicateEmail, got %v", err)
 	}
 }
