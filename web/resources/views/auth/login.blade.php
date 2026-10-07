@@ -32,6 +32,9 @@
         <p class="muted" style="margin-top:16px;">
             <a href="{{ route('password.request') }}">Forgot your password?</a>
         </p>
+        <p class="muted" style="margin-top:4px;">
+            New here? <a href="{{ route('register') }}">Register your company</a>
+        </p>
     </div>
 </div>
 @endsection
