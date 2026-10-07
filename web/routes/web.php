@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
+use App\Http\Controllers\BranchOverviewController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GatewayController;
@@ -31,6 +32,7 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('company.selected')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'show'])->name('dashboard');
+        Route::get('/branch-overview', [BranchOverviewController::class, 'show'])->name('branch-overview');
 
         // Daily-operations screens (System Documentation 5.2 screen
         // catalogue). Each just renders its shell; data is loaded and

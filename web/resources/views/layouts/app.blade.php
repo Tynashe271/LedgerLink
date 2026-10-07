@@ -145,6 +145,7 @@
         <span class="brand">BranchLedger</span>
         <nav>
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Overview</a>
+            <a href="{{ route('branch-overview') }}" class="{{ request()->routeIs('branch-overview') ? 'active' : '' }}">Branch overview</a>
             <div class="section-label">Daily operations</div>
             <a href="{{ route('workspace.sales') }}" class="{{ request()->routeIs('workspace.sales') ? 'active' : '' }}">Sales</a>
             <a href="{{ route('workspace.expenses') }}" class="{{ request()->routeIs('workspace.expenses') ? 'active' : '' }}">Expenses</a>
