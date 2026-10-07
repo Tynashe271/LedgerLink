@@ -15,6 +15,12 @@
             @endforeach
         </select>
 
+        <label for="supplier_id">Supplier</label>
+        <select id="supplier_id">
+            <option value="">One-off / no supplier record</option>
+        </select>
+        <p class="muted" style="margin-top:4px;">Selecting a supplier is what makes duplicate-invoice detection actually work — see below.</p>
+
         <label for="source_reference">Supplier invoice reference</label>
         <input id="source_reference" type="text" placeholder="e.g. INV-1042" required>
 
@@ -53,7 +59,7 @@
 </div>
 
 <script type="module">
-import { queueOperation, getCachedProducts } from '/js/offline/sync.js';
+import { queueOperation, getCachedProducts, getCachedSuppliers } from '/js/offline/sync.js';
 import { outboxRecordsByStatus } from '/js/offline/db.js';
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -80,10 +86,19 @@ document.getElementById('product_id').addEventListener('change', (e) => {
 });
 populateProductPicker();
 
+async function populateSupplierPicker() {
+    const suppliers = await getCachedSuppliers();
+    const select = document.getElementById('supplier_id');
+    select.innerHTML = '<option value="">One-off / no supplier record</option>' +
+        suppliers.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+}
+populateSupplierPicker();
+
 document.getElementById('purchase-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const resultEl = document.getElementById('result');
     const productId = document.getElementById('product_id').value;
+    const supplierId = document.getElementById('supplier_id').value;
 
     const payload = {
         operation_id: uuidv4(),
@@ -92,6 +107,7 @@ document.getElementById('purchase-form').addEventListener('submit', async (e) =>
         document_date: new Date().toISOString().slice(0, 10),
         currency_code: 'USD',
         exchange_rate: '1',
+        counterparty_id: supplierId || undefined,
         source_reference: document.getElementById('source_reference').value,
         lines: [{
             product_id: productId || undefined,

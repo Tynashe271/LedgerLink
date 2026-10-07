@@ -133,6 +133,17 @@ func (t *txImpl) GetStockPosition(ctx context.Context, companyID, branchID, prod
 	return pos, err
 }
 
+func (t *txImpl) PurchaseInvoiceExists(ctx context.Context, companyID, counterpartyID uuid.UUID, sourceReference string) (bool, error) {
+	var exists bool
+	err := t.tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM transactions
+			WHERE company_id = $1 AND counterparty_id = $2 AND source_reference = $3
+			  AND document_type = 'purchase' AND status = 'posted'
+		)`, companyID, counterpartyID, sourceReference).Scan(&exists)
+	return exists, err
+}
+
 func (t *txImpl) SaveStockMovement(ctx context.Context, m accounting.StockMovementRecord) error {
 	_, err := t.tx.Exec(ctx, `
 		INSERT INTO stock_movements (id, company_id, branch_id, product_id, source_transaction_id,

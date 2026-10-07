@@ -158,7 +158,7 @@
             <a href="{{ route('workspace.sync-centre') }}" class="{{ request()->routeIs('workspace.sync-centre') ? 'active' : '' }}">Sync centre</a>
             <div class="section-label">Catalogue</div>
             <a href="{{ route('workspace.products') }}" class="{{ request()->routeIs('workspace.products') ? 'active' : '' }}">Products</a>
-            <a href="{{ route('workspace.customers') }}" class="{{ request()->routeIs('workspace.customers') ? 'active' : '' }}">Customers</a>
+            <a href="{{ route('workspace.customers') }}" class="{{ request()->routeIs('workspace.customers') ? 'active' : '' }}">Customers and suppliers</a>
             @if(($role ?? null) !== 'staff')
                 <div class="section-label">Review</div>
                 <a href="{{ route('workspace.approvals') }}" class="{{ request()->routeIs('workspace.approvals') ? 'active' : '' }}">Approvals</a>

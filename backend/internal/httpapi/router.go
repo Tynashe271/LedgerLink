@@ -92,6 +92,8 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/products", handleCreateProduct(deps))
 		r.Get("/customers", handleListCustomers(deps))
 		r.Post("/customers", handleCreateCustomer(deps))
+		r.Get("/suppliers", handleListSuppliers(deps))
+		r.Post("/suppliers", handleCreateSupplier(deps))
 
 		r.Post("/closes", handleCreateClose(deps))
 		r.Post("/approvals/{id}/decision", handleApprovalDecision(deps))

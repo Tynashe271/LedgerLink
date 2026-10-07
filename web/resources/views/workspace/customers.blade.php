@@ -1,10 +1,11 @@
 @extends('layouts.app')
-@section('title', 'Customers · BranchLedger')
+@section('title', 'Customers and suppliers · BranchLedger')
 @section('body')
-<h1>Customers</h1>
+<h1>Customers and suppliers</h1>
 <p class="page-subtitle">
     Select a customer on a credit sale so their balance can be tracked, and record a receipt here when they pay &mdash;
-    outstanding and overdue balances show up in the dashboard's "Needs attention" panel.
+    outstanding and overdue balances show up in the dashboard's "Needs attention" panel. Select a supplier on a
+    purchase so duplicate-invoice detection actually has something to compare against.
 </p>
 
 <div class="panel">
@@ -48,6 +49,29 @@
         <tbody></tbody>
     </table>
     <p class="muted" style="margin-top:10px;">Per-customer outstanding balances aren't shown here yet &mdash; see the dashboard's overdue-debt alert for customers who owe past their due date.</p>
+</div>
+
+<div class="panel">
+    <h2>Add a supplier</h2>
+    <div id="supplier-result"></div>
+    <form id="supplier-form">
+        <label for="supplier_name">Name</label>
+        <input id="supplier_name" type="text" required>
+        <label for="supplier_contact">Contact</label>
+        <input id="supplier_contact" type="text" placeholder="Phone or email">
+        <button type="submit">Add supplier</button>
+    </form>
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h2>Suppliers</h2>
+        <button id="supplier-refresh-btn" type="button" class="secondary">Refresh</button>
+    </div>
+    <table id="suppliers-table">
+        <thead><tr><th>Name</th><th>Contact</th></tr></thead>
+        <tbody></tbody>
+    </table>
 </div>
 
 <script type="module">
@@ -118,5 +142,34 @@ async function loadCustomers() {
 
 document.getElementById('refresh-btn').addEventListener('click', loadCustomers);
 loadCustomers();
+
+document.getElementById('supplier-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const resultEl = document.getElementById('supplier-result');
+    const { status, body } = await apiFetch('v1/suppliers', {
+        method: 'POST',
+        body: JSON.stringify({ name: document.getElementById('supplier_name').value, contact: document.getElementById('supplier_contact').value }),
+    });
+    if (status === 201) {
+        resultEl.innerHTML = '<div class="status">Supplier added.</div>';
+        e.target.reset();
+        loadSuppliers();
+    } else {
+        resultEl.innerHTML = `<div class="errors">Rejected (HTTP ${status}): ${body.error_code || 'unknown error'}</div>`;
+    }
+});
+
+async function loadSuppliers() {
+    const { status, body } = await apiFetch('v1/suppliers');
+    const tbody = document.querySelector('#suppliers-table tbody');
+    if (status !== 200 || !Array.isArray(body) || !body.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="2">No suppliers yet.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = body.map(s => `<tr><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.contact || '')}</td></tr>`).join('');
+}
+
+document.getElementById('supplier-refresh-btn').addEventListener('click', loadSuppliers);
+loadSuppliers();
 </script>
 @endsection

@@ -70,3 +70,32 @@ func (r *catalogRepo) CreateCustomer(ctx context.Context, c catalog.Customer) (u
 		c.CompanyID, c.Name, nullableString(c.Contact), c.IsActive).Scan(&id)
 	return id, err
 }
+
+func (r *catalogRepo) ListSuppliers(ctx context.Context, companyID uuid.UUID) ([]catalog.Supplier, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT id, company_id, name, coalesce(contact, ''), is_active
+		FROM counterparties WHERE company_id = $1 AND kind = 'supplier' AND is_active ORDER BY name`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []catalog.Supplier
+	for rows.Next() {
+		var s catalog.Supplier
+		if err := rows.Scan(&s.ID, &s.CompanyID, &s.Name, &s.Contact, &s.IsActive); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *catalogRepo) CreateSupplier(ctx context.Context, s catalog.Supplier) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.db.pool.QueryRow(ctx, `
+		INSERT INTO counterparties (company_id, kind, name, contact, is_active)
+		VALUES ($1,'supplier',$2,$3,$4) RETURNING id`,
+		s.CompanyID, s.Name, nullableString(s.Contact), s.IsActive).Scan(&id)
+	return id, err
+}

@@ -23,8 +23,8 @@ var (
 	ErrConflict = errors.New("accounting: operation conflict")
 	// ErrPeriodClosed covers both a locked period and no period defined for
 	// the document date.
-	ErrPeriodClosed = errors.New("accounting: posting period is not open")
-	ErrOutOfScope    = errors.New("accounting: branch is outside the caller's scope")
+	ErrPeriodClosed   = errors.New("accounting: posting period is not open")
+	ErrOutOfScope     = errors.New("accounting: branch is outside the caller's scope")
 	ErrUnknownDocType = errors.New("accounting: unsupported document type")
 	// ErrUnsupportedTransferType covers transfer_type values this
 	// implementation does not yet handle (only "cash" posts; see
@@ -39,6 +39,10 @@ var (
 	// adjustment matches the recorded position — nothing to post, since
 	// BuildJournal rejects a zero-amount journal outright.
 	ErrNoStockChange = errors.New("accounting: stock count matches the recorded position")
+	// ErrDuplicatePurchaseInvoice covers a purchase whose (supplier,
+	// source_reference) pair already has a posted purchase — User Manual:
+	// "Check possible duplicates before recording."
+	ErrDuplicatePurchaseInvoice = errors.New("accounting: a purchase with this supplier and reference is already posted")
 )
 
 // PostInput is what an API handler gathers from a validated request before
@@ -47,18 +51,18 @@ var (
 // boundary, never trusted from the client, per "The server calculates
 // authoritative totals and rejects client mismatches."
 type PostInput struct {
-	OperationID      uuid.UUID
-	BranchID         uuid.UUID
-	DeviceID         *uuid.UUID
-	DocumentType     string // sale | purchase | expense | receipt | payment
-	DocumentDate     time.Time
-	CurrencyCode     string
-	ExchangeRate     decimal.Decimal // reporting units per original unit
-	CounterpartyID   *uuid.UUID
-	PaymentAccountID *uuid.UUID
-	SourceReference  string
-	Explanation      string
-	Lines            []LineInput
+	OperationID       uuid.UUID
+	BranchID          uuid.UUID
+	DeviceID          *uuid.UUID
+	DocumentType      string // sale | purchase | expense | receipt | payment
+	DocumentDate      time.Time
+	CurrencyCode      string
+	ExchangeRate      decimal.Decimal // reporting units per original unit
+	CounterpartyID    *uuid.UUID
+	PaymentAccountID  *uuid.UUID
+	SourceReference   string
+	Explanation       string
+	Lines             []LineInput
 	ClientSubmittedAt time.Time
 
 	// DueDate matters only for a credit sale (CounterpartyID set, no
@@ -252,6 +256,9 @@ func (s *Service) Post(ctx context.Context, scope tenancy.Scope, in PostInput) (
 			if errors.Is(err, ErrNoStockChange) {
 				return rejectionError{code: "no_stock_change", cause: err}
 			}
+			if errors.Is(err, ErrDuplicatePurchaseInvoice) {
+				return rejectionError{code: "duplicate_supplier_invoice", cause: err}
+			}
 			return fmt.Errorf("derive journal: %w", err)
 		}
 		_ = costAmount
@@ -349,7 +356,9 @@ type rejectionError struct {
 	cause error
 }
 
-func (r rejectionError) Error() string { return fmt.Sprintf("accounting: rejected (%s): %v", r.code, r.cause) }
+func (r rejectionError) Error() string {
+	return fmt.Sprintf("accounting: rejected (%s): %v", r.code, r.cause)
+}
 func (r rejectionError) Unwrap() error { return r.cause }
 
 // deriveJournal dispatches to the posting rule matching DocumentType,
@@ -385,6 +394,19 @@ func (s *Service) deriveJournal(ctx context.Context, tx Tx, scope tenancy.Scope,
 		return j, costAmount, err
 
 	case "purchase":
+		// Duplicate-invoice check: same supplier, same reference, already
+		// posted. Checked before anything else so a flagged duplicate never
+		// partially receives stock first (User Manual: "Check possible
+		// duplicates before recording").
+		if in.CounterpartyID != nil && in.SourceReference != "" {
+			exists, err := tx.PurchaseInvoiceExists(ctx, scope.CompanyID, *in.CounterpartyID, in.SourceReference)
+			if err != nil {
+				return Journal{}, decimal.Zero, fmt.Errorf("check duplicate purchase invoice: %w", err)
+			}
+			if exists {
+				return Journal{}, decimal.Zero, ErrDuplicatePurchaseInvoice
+			}
+		}
 		// Receive stock for every stocked line at its purchase cost before
 		// posting — previously this only moved the Inventory *value* account
 		// and never touched a product's actual tracked quantity, so nothing
@@ -585,16 +607,16 @@ func (s *Service) countStockForLines(ctx context.Context, tx Tx, scope tenancy.S
 // apart from "same operation ID, different content" (409 conflict).
 func hashPayload(in PostInput) string {
 	type stable struct {
-		BranchID        uuid.UUID
-		DocumentType    string
-		DocumentDate    time.Time
-		CurrencyCode    string
-		ExchangeRate    string
-		CounterpartyID  *uuid.UUID
+		BranchID         uuid.UUID
+		DocumentType     string
+		DocumentDate     time.Time
+		CurrencyCode     string
+		ExchangeRate     string
+		CounterpartyID   *uuid.UUID
 		PaymentAccountID *uuid.UUID
-		SourceReference string
-		Explanation     string
-		Lines           []LineInput
+		SourceReference  string
+		Explanation      string
+		Lines            []LineInput
 	}
 	b, _ := json.Marshal(stable{
 		BranchID: in.BranchID, DocumentType: in.DocumentType, DocumentDate: in.DocumentDate,

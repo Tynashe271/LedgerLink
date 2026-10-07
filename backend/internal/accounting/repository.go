@@ -71,6 +71,12 @@ type Tx interface {
 	// product at a branch, used to cost sale/waste/transfer issues.
 	GetStockPosition(ctx context.Context, companyID, branchID, productID uuid.UUID) (inventory.Position, error)
 
+	// PurchaseInvoiceExists reports whether a posted purchase already exists
+	// for this supplier and source reference (migration 0001's
+	// idx_transactions_duplicate_check exists to make exactly this query
+	// fast). User Manual: "Check possible duplicates before recording."
+	PurchaseInvoiceExists(ctx context.Context, companyID, counterpartyID uuid.UUID, sourceReference string) (bool, error)
+
 	// SaveStockMovement persists one inventory movement row and the position
 	// it produced.
 	SaveStockMovement(ctx context.Context, m StockMovementRecord) error
@@ -199,36 +205,36 @@ type TransferRecord struct {
 
 // DailyCloseRecord mirrors the `daily_closes` table.
 type DailyCloseRecord struct {
-	ID            uuid.UUID
-	CompanyID     uuid.UUID
-	BranchID      uuid.UUID
-	CloseDate     time.Time
-	CurrencyCode  string
-	OpeningFloat  decimal.Decimal
-	ExpectedCash  decimal.Decimal
-	CountedCash   decimal.Decimal
-	Discrepancy   decimal.Decimal
-	Explanation   string
-	Status        string
-	Revision      int
-	SubmittedBy   uuid.UUID
+	ID           uuid.UUID
+	CompanyID    uuid.UUID
+	BranchID     uuid.UUID
+	CloseDate    time.Time
+	CurrencyCode string
+	OpeningFloat decimal.Decimal
+	ExpectedCash decimal.Decimal
+	CountedCash  decimal.Decimal
+	Discrepancy  decimal.Decimal
+	Explanation  string
+	Status       string
+	Revision     int
+	SubmittedBy  uuid.UUID
 }
 
 // OperationRecord mirrors the `operations` table: the idempotency ledger keyed
 // by (company_id, operation_id).
 type OperationRecord struct {
-	CompanyID        uuid.UUID
-	OperationID      uuid.UUID
-	BranchID         uuid.UUID
-	DeviceID         *uuid.UUID
-	ActorUserID      uuid.UUID
-	CommandType      string
-	PayloadHash      string
-	Status           string // "accepted" | "rejected"
-	ResultRecordType string
-	ResultRecordID   uuid.UUID
-	ResultVersion    int
-	ErrorCode        string
+	CompanyID         uuid.UUID
+	OperationID       uuid.UUID
+	BranchID          uuid.UUID
+	DeviceID          *uuid.UUID
+	ActorUserID       uuid.UUID
+	CommandType       string
+	PayloadHash       string
+	Status            string // "accepted" | "rejected"
+	ResultRecordType  string
+	ResultRecordID    uuid.UUID
+	ResultVersion     int
+	ErrorCode         string
 	ClientSubmittedAt time.Time
 }
 
@@ -244,22 +250,22 @@ type Period struct {
 // TransactionRecord mirrors the `transactions` table plus its lines, as
 // persisted after posting succeeds.
 type TransactionRecord struct {
-	ID                 uuid.UUID
-	CompanyID          uuid.UUID
-	BranchID           uuid.UUID
-	OperationID        uuid.UUID
-	DocumentType       string
-	DocumentDate       time.Time
-	CurrencyCode       string
-	ExchangeRate       decimal.Decimal
-	CounterpartyID     *uuid.UUID
-	PaymentAccountID   *uuid.UUID
-	SourceReference    string
-	Explanation        string
-	Status             string
-	Revision           int
-	CreatedBy          uuid.UUID
-	Lines              []TransactionLineRecord
+	ID               uuid.UUID
+	CompanyID        uuid.UUID
+	BranchID         uuid.UUID
+	OperationID      uuid.UUID
+	DocumentType     string
+	DocumentDate     time.Time
+	CurrencyCode     string
+	ExchangeRate     decimal.Decimal
+	CounterpartyID   *uuid.UUID
+	PaymentAccountID *uuid.UUID
+	SourceReference  string
+	Explanation      string
+	Status           string
+	Revision         int
+	CreatedBy        uuid.UUID
+	Lines            []TransactionLineRecord
 	// ReversesTransactionID is set only on a reversal transaction, linking it
 	// back to the original it mirrors (the original's own
 	// reversed_by_transaction_id is set separately via
@@ -283,16 +289,16 @@ type TransactionLineRecord struct {
 
 // StockMovementRecord mirrors `stock_movements`.
 type StockMovementRecord struct {
-	ID                   uuid.UUID
-	CompanyID            uuid.UUID
-	BranchID             uuid.UUID
-	ProductID            uuid.UUID
-	SourceTransactionID  uuid.UUID
-	MovementType         string
-	QuantityDelta        decimal.Decimal
-	UnitCost             decimal.Decimal
-	RunningQuantity      decimal.Decimal
-	RunningValue         decimal.Decimal
-	Reason               string
-	CreatedBy            uuid.UUID
+	ID                  uuid.UUID
+	CompanyID           uuid.UUID
+	BranchID            uuid.UUID
+	ProductID           uuid.UUID
+	SourceTransactionID uuid.UUID
+	MovementType        string
+	QuantityDelta       decimal.Decimal
+	UnitCost            decimal.Decimal
+	RunningQuantity     decimal.Decimal
+	RunningValue        decimal.Decimal
+	Reason              string
+	CreatedBy           uuid.UUID
 }

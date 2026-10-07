@@ -130,3 +130,56 @@ func handleCreateCustomer(deps Deps) http.HandlerFunc {
 		writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 	}
 }
+
+// --- GET/POST /api/v1/suppliers -----------------------------------------------
+
+type supplierResponse struct {
+	ID      uuid.UUID `json:"id"`
+	Name    string    `json:"name"`
+	Contact string    `json:"contact,omitempty"`
+}
+
+func handleListSuppliers(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		suppliers, err := deps.CatalogSvc.ListSuppliers(r.Context(), scope)
+		if err != nil {
+			log.Printf("request_id=%s list_suppliers error: %v", scope.RequestID, err)
+			writeError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		out := make([]supplierResponse, 0, len(suppliers))
+		for _, s := range suppliers {
+			out = append(out, supplierResponse{ID: s.ID, Name: s.Name, Contact: s.Contact})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type createSupplierRequest struct {
+	Name    string `json:"name"`
+	Contact string `json:"contact"`
+}
+
+func handleCreateSupplier(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		var req createSupplierRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "malformed_request")
+			return
+		}
+		id, err := deps.CatalogSvc.CreateSupplier(r.Context(), scope, req.Name, req.Contact)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_supplier")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	}
+}

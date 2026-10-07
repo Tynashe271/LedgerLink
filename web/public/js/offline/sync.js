@@ -84,12 +84,14 @@ export async function syncNow() {
 // so the last-fetched lists are cached and read back when offline.
 
 async function refreshReferenceData() {
-    const [products, customers] = await Promise.all([
+    const [products, customers, suppliers] = await Promise.all([
         apiFetch('v1/products').then(r => (r.status === 200 && Array.isArray(r.body)) ? r.body : null).catch(() => null),
         apiFetch('v1/customers').then(r => (r.status === 200 && Array.isArray(r.body)) ? r.body : null).catch(() => null),
+        apiFetch('v1/suppliers').then(r => (r.status === 200 && Array.isArray(r.body)) ? r.body : null).catch(() => null),
     ]);
     if (products) await setMeta('products_cache', products);
     if (customers) await setMeta('customers_cache', customers);
+    if (suppliers) await setMeta('suppliers_cache', suppliers);
 }
 
 export async function getCachedProducts() {
@@ -98,6 +100,10 @@ export async function getCachedProducts() {
 
 export async function getCachedCustomers() {
     return getMeta('customers_cache', []);
+}
+
+export async function getCachedSuppliers() {
+    return getMeta('suppliers_cache', []);
 }
 
 async function pushPending() {

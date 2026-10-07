@@ -22,7 +22,7 @@ import (
 type fakeRepo struct {
 	periodOpen     bool
 	accounts       ChartAccounts
-	stockPositions map[uuid.UUID]inventory.Position // keyed by productID (single branch/company in tests)
+	stockPositions map[uuid.UUID]inventory.Position    // keyed by productID (single branch/company in tests)
 	stockMovements map[uuid.UUID][]StockMovementRecord // keyed by source_transaction_id
 	transactions   map[uuid.UUID]TransactionRecord
 	journals       map[uuid.UUID]Journal // keyed by source_transaction_id
@@ -130,6 +130,15 @@ func (f *fakeRepo) GetChartAccounts(ctx context.Context, companyID uuid.UUID) (C
 }
 func (f *fakeRepo) GetStockPosition(ctx context.Context, companyID, branchID, productID uuid.UUID) (inventory.Position, error) {
 	return f.stockPositions[productID], nil
+}
+func (f *fakeRepo) PurchaseInvoiceExists(ctx context.Context, companyID, counterpartyID uuid.UUID, sourceReference string) (bool, error) {
+	for _, t := range f.transactions {
+		if t.DocumentType == "purchase" && t.Status == "posted" && t.SourceReference == sourceReference &&
+			t.CounterpartyID != nil && *t.CounterpartyID == counterpartyID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakeRepo) SaveStockMovement(ctx context.Context, m StockMovementRecord) error {
 	f.stockPositions[m.ProductID] = inventory.Position{Quantity: m.RunningQuantity, Value: m.RunningValue}
@@ -245,7 +254,7 @@ func postedSaleTx(t *testing.T, svc *Service, scope tenancy.Scope, branchID uuid
 	res, err := svc.Post(context.Background(), scope, PostInput{
 		OperationID: uuid.New(), BranchID: branchID, DocumentType: "expense",
 		DocumentDate: time.Now().UTC(), CurrencyCode: "USD", ExchangeRate: d("1"),
-		Lines: []LineInput{{Description: "Rent", Quantity: d("1"), UnitPrice: d("30")}},
+		Lines:             []LineInput{{Description: "Rent", Quantity: d("1"), UnitPrice: d("30")}},
 		ClientSubmittedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -401,7 +410,7 @@ func TestExpenseAboveLimitAwaitsApprovalThenPosts(t *testing.T) {
 	res, err := svc.Post(context.Background(), staffScope, PostInput{
 		OperationID: uuid.New(), BranchID: branchID, DocumentType: "expense",
 		DocumentDate: time.Now().UTC(), CurrencyCode: "USD", ExchangeRate: d("1"),
-		Lines: []LineInput{{Description: "Generator repair", Quantity: d("1"), UnitPrice: d("200")}},
+		Lines:             []LineInput{{Description: "Generator repair", Quantity: d("1"), UnitPrice: d("200")}},
 		ClientSubmittedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -470,7 +479,7 @@ func TestExpenseAtOrBelowLimitPostsImmediately(t *testing.T) {
 	res, err := svc.Post(context.Background(), scope, PostInput{
 		OperationID: uuid.New(), BranchID: branchID, DocumentType: "expense",
 		DocumentDate: time.Now().UTC(), CurrencyCode: "USD", ExchangeRate: d("1"),
-		Lines: []LineInput{{Description: "Stationery", Quantity: d("1"), UnitPrice: d("50")}},
+		Lines:             []LineInput{{Description: "Stationery", Quantity: d("1"), UnitPrice: d("50")}},
 		ClientSubmittedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -495,7 +504,7 @@ func TestTransferDispatchAndPartialThenFullReceipt(t *testing.T) {
 		OperationID: uuid.New(), BranchID: senderBranch, DocumentType: "transfer",
 		DocumentDate: time.Now().UTC(), CurrencyCode: "USD", ExchangeRate: d("1"),
 		ReceiverBranchID: &receiverBranch, TransferType: "cash",
-		Lines: []LineInput{{Description: "Cash to main", Quantity: d("1"), UnitPrice: d("100")}},
+		Lines:             []LineInput{{Description: "Cash to main", Quantity: d("1"), UnitPrice: d("100")}},
 		ClientSubmittedAt: time.Now().UTC(),
 	})
 	if err != nil || !dispatch.Accepted {
@@ -692,5 +701,43 @@ func TestStockAdjustmentCountMatchingPositionIsRejected(t *testing.T) {
 	}
 	if res.Accepted || res.ErrorCode != "no_stock_change" {
 		t.Fatalf("expected a no_stock_change rejection, got %+v", res)
+	}
+}
+
+// --- Purchase duplicate-invoice detection -------------------------------------
+
+func TestPurchaseRejectsDuplicateSupplierInvoice(t *testing.T) {
+	repo := newFakeRepo()
+	svc := NewService(repo)
+	companyID, branchID, supplierID := uuid.New(), uuid.New(), uuid.New()
+	scope := tenancy.Scope{CompanyID: companyID, UserID: uuid.New(), Role: tenancy.RoleAccountant, BranchScope: []uuid.UUID{branchID}}
+
+	postPurchase := func(reference string) (PostResult, error) {
+		return svc.Post(context.Background(), scope, PostInput{
+			OperationID: uuid.New(), BranchID: branchID, DocumentType: "purchase",
+			DocumentDate: time.Now().UTC(), CurrencyCode: "USD", ExchangeRate: d("1"),
+			CounterpartyID: &supplierID, SourceReference: reference,
+			Lines:             []LineInput{{Description: "Stock", Quantity: d("1"), UnitPrice: d("100")}},
+			ClientSubmittedAt: time.Now().UTC(),
+		})
+	}
+
+	first, err := postPurchase("INV-100")
+	if err != nil || !first.Accepted {
+		t.Fatalf("first purchase: res=%+v err=%v", first, err)
+	}
+
+	second, err := postPurchase("INV-100")
+	if err != nil {
+		t.Fatalf("second purchase: %v", err)
+	}
+	if second.Accepted || second.ErrorCode != "duplicate_supplier_invoice" {
+		t.Fatalf("expected duplicate_supplier_invoice rejection, got %+v", second)
+	}
+
+	// A different reference, or a different supplier, is not a duplicate.
+	differentRef, err := postPurchase("INV-101")
+	if err != nil || !differentRef.Accepted {
+		t.Fatalf("different reference should post: res=%+v err=%v", differentRef, err)
 	}
 }
