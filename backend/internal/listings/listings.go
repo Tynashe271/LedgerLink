@@ -8,6 +8,7 @@ package listings
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +16,10 @@ import (
 
 	"github.com/ledgerlink/branchledger/backend/internal/tenancy"
 )
+
+// ErrCompanyWideReadRequired is returned by AuditEvents for a role not in
+// tenancy.CompanyWideReadRoles.
+var ErrCompanyWideReadRequired = errors.New("listings: company-wide read access required")
 
 // TransactionSummary is one row of GET /api/v1/transactions.
 type TransactionSummary struct {
@@ -86,12 +91,27 @@ type StockPositionSummary struct {
 	Value       decimal.Decimal
 }
 
+// AuditEvent is one row of GET /api/v1/audit-events (section 7.5's
+// "Evidence" area / test traceability's "Audit login, access denials, role
+// changes and exports" — security events recorded everywhere, never
+// previously surfaced to anyone).
+type AuditEvent struct {
+	ID         int64
+	ActorName  string // "" when the event has no actor (actor_user_id is nullable)
+	EventType  string
+	RecordType string
+	RecordID   *uuid.UUID
+	Details    map[string]any
+	ServerTime time.Time
+}
+
 // Store is the read-only aggregation these listings need from Postgres.
 type Store interface {
 	ListTransactions(ctx context.Context, companyID uuid.UUID, allowedBranches []uuid.UUID, f TransactionFilter) ([]TransactionSummary, error)
 	ListPendingApprovals(ctx context.Context, companyID uuid.UUID, allowedBranches []uuid.UUID) ([]ApprovalSummary, error)
 	ListOpenTransfers(ctx context.Context, companyID uuid.UUID, allowedBranches []uuid.UUID) ([]TransferSummary, error)
 	ListStockPositions(ctx context.Context, companyID uuid.UUID, allowedBranches []uuid.UUID) ([]StockPositionSummary, error)
+	ListAuditEvents(ctx context.Context, companyID uuid.UUID, from, to time.Time, limit int) ([]AuditEvent, error)
 }
 
 type Service struct {
@@ -135,4 +155,20 @@ func (s *Service) OpenTransfers(ctx context.Context, scope tenancy.Scope) ([]Tra
 // aggregate rather than narrowing to one branch.
 func (s *Service) StockPositions(ctx context.Context, scope tenancy.Scope) ([]StockPositionSummary, error) {
 	return s.store.ListStockPositions(ctx, scope.CompanyID, scope.BranchScope)
+}
+
+// AuditEvents lists security/audit events for the company. Unlike every
+// other listing here, this is never branch-scoped — an audit_events row has
+// no branch_id at all (it may describe a login, an export, a role change,
+// none of which are branch-specific), so this is restricted to
+// tenancy.CompanyWideReadRoles (Owner, Accountant) outright rather than
+// narrowed to "their branches".
+func (s *Service) AuditEvents(ctx context.Context, scope tenancy.Scope, from, to time.Time, limit int) ([]AuditEvent, error) {
+	if !tenancy.CompanyWideReadRoles[scope.Role] {
+		return nil, ErrCompanyWideReadRequired
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	return s.store.ListAuditEvents(ctx, scope.CompanyID, from, to, limit)
 }

@@ -2,7 +2,9 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -172,6 +174,37 @@ func (r *listingsRepo) ListStockPositions(ctx context.Context, companyID uuid.UU
 			return nil, err
 		}
 		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func (r *listingsRepo) ListAuditEvents(ctx context.Context, companyID uuid.UUID, from, to time.Time, limit int) ([]listings.AuditEvent, error) {
+	rows, err := r.db.pool.Query(ctx, `
+		SELECT a.id, COALESCE(u.full_name, ''), a.event_type, COALESCE(a.record_type, ''), a.record_id,
+		       a.details, a.server_time
+		FROM audit_events a
+		LEFT JOIN users u ON u.id = a.actor_user_id
+		WHERE a.company_id = $1 AND a.server_time >= $2 AND a.server_time <= $3
+		ORDER BY a.server_time DESC
+		LIMIT $4`, companyID, from, to, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []listings.AuditEvent
+	for rows.Next() {
+		var e listings.AuditEvent
+		var detailsRaw []byte
+		if err := rows.Scan(&e.ID, &e.ActorName, &e.EventType, &e.RecordType, &e.RecordID, &detailsRaw, &e.ServerTime); err != nil {
+			return nil, err
+		}
+		if len(detailsRaw) > 0 {
+			if err := json.Unmarshal(detailsRaw, &e.Details); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, e)
 	}
 	return out, rows.Err()
 }

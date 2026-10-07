@@ -71,6 +71,7 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/approvals", handleListApprovals(deps))
 		r.Get("/transfers", handleListTransfers(deps))
 		r.Get("/stock", handleListStock(deps))
+		r.Get("/audit-events", handleListAuditEvents(deps))
 
 		r.Get("/reconciliation", handleReconciliationOverview(deps))
 		r.Post("/reconciliation/items", handleAddStatementItem(deps))

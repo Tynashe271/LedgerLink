@@ -88,6 +88,11 @@ class WorkspaceController extends Controller
         return $this->render($request, 'workspace.settings', 'Settings');
     }
 
+    public function auditLog(Request $request): View
+    {
+        return $this->render($request, 'workspace.audit-log', 'Audit log');
+    }
+
     private function render(Request $request, string $view, string $title): View
     {
         $companyId = $request->session()->get('current_company_id');

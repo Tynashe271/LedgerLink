@@ -165,6 +165,7 @@
                 <a href="{{ route('workspace.approvals') }}" class="{{ request()->routeIs('workspace.approvals') ? 'active' : '' }}">Approvals</a>
                 <div class="section-label">Admin</div>
                 <a href="{{ route('workspace.settings') }}" class="{{ request()->routeIs('workspace.settings') ? 'active' : '' }}">Settings</a>
+                <a href="{{ route('workspace.audit-log') }}" class="{{ request()->routeIs('workspace.audit-log') ? 'active' : '' }}">Audit log</a>
             @endif
         </nav>
     </aside>

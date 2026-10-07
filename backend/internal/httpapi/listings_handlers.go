@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -218,6 +220,79 @@ func handleListStock(deps Deps) http.HandlerFunc {
 				ProductID: s.ProductID, SKU: s.SKU, ProductName: s.ProductName, Unit: s.Unit,
 				BranchID: s.BranchID, BranchName: s.BranchName,
 				Quantity: s.Quantity.StringFixed(3), Value: s.Value.StringFixed(2), UnitCost: unitCost,
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+// --- GET /api/v1/audit-events --------------------------------------------------
+
+type auditEventResponse struct {
+	ID         int64          `json:"id"`
+	ActorName  string         `json:"actor_name,omitempty"`
+	EventType  string         `json:"event_type"`
+	RecordType string         `json:"record_type,omitempty"`
+	RecordID   *uuid.UUID     `json:"record_id,omitempty"`
+	Details    map[string]any `json:"details"`
+	ServerTime time.Time      `json:"server_time"`
+}
+
+// handleListAuditEvents serves GET /api/v1/audit-events — section 7.5's
+// audit evidence requirement, restricted to tenancy.CompanyWideReadRoles.
+// Query params: from, to (YYYY-MM-DD, default the last 30 days), limit
+// (default 100, max 200).
+func handleListAuditEvents(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := requireScope(w, r)
+		if !ok {
+			return
+		}
+		q := r.URL.Query()
+
+		to := time.Now().UTC()
+		from := to.AddDate(0, 0, -30)
+		if raw := q.Get("from"); raw != "" {
+			parsed, err := time.Parse("2006-01-02", raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_from_date")
+				return
+			}
+			from = parsed
+		}
+		if raw := q.Get("to"); raw != "" {
+			parsed, err := time.Parse("2006-01-02", raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_to_date")
+				return
+			}
+			to = parsed
+		}
+		to = to.Add(24*time.Hour - time.Nanosecond)
+
+		limit := 100
+		if raw := q.Get("limit"); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil {
+				limit = parsed
+			}
+		}
+
+		results, err := deps.ListingsSvc.AuditEvents(r.Context(), scope, from, to, limit)
+		if errors.Is(err, listings.ErrCompanyWideReadRequired) {
+			writeError(w, http.StatusForbidden, "out_of_scope")
+			return
+		}
+		if err != nil {
+			log.Printf("request_id=%s list_audit_events error: %v", scope.RequestID, err)
+			writeError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+
+		out := make([]auditEventResponse, 0, len(results))
+		for _, e := range results {
+			out = append(out, auditEventResponse{
+				ID: e.ID, ActorName: e.ActorName, EventType: e.EventType, RecordType: e.RecordType,
+				RecordID: e.RecordID, Details: e.Details, ServerTime: e.ServerTime,
 			})
 		}
 		writeJSON(w, http.StatusOK, out)
