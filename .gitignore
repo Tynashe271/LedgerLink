@@ -1,0 +1,10 @@
+# Local dev stack runtime output (ops/deploy/dev-up.sh) — regenerated on every run.
+ops/deploy/*.log
+ops/deploy/exports/
+
+# mkcert-issued local dev TLS cert/key — tied to this machine's mkcert CA,
+# which no other machine trusts; regenerate locally rather than committing it.
+ops/deploy/nginx/certs/
+
+.DS_Store
+Thumbs.db

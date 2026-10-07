@@ -1,0 +1,95 @@
+name: CI
+
+# Matches BranchLedger_Architecture.pdf, "Implementation layout and
+# delivery": "CI runs formatting, static analysis, dependency checks,
+# meaningful unit tests, database integration tests and access-isolation
+# tests." The access-isolation and full E2E tiers described there (Laravel +
+# Go + browser flows together) are not wired up yet — this covers unit tests
+# for both services, plus Laravel feature tests against the real shared
+# Postgres schema (sqlite can't stand in for it: the schema uses pgcrypto,
+# citext, uuid[] columns and a daterange exclusion constraint).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    name: Go backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache-dependency-path: backend/go.sum
+      - run: gofmt -l . | tee /tmp/fmt.out && test ! -s /tmp/fmt.out
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./... -race -count=1
+
+  laravel:
+    name: Laravel gateway
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: branchledger
+          POSTGRES_PASSWORD: branchledger_dev
+          POSTGRES_DB: branchledger
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U branchledger"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_pgsql, pgsql
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+
+      # BranchLedger's own schema (companies, branches, users, accounting,
+      # ...) is Go-owned and applied directly with psql, not through
+      # Laravel's migrator — see database/migrations/0001_init_schema.up.sql.
+      - name: Apply BranchLedger schema
+        run: |
+          PGPASSWORD=branchledger_dev psql -h localhost -U branchledger -d branchledger \
+            -f ../database/migrations/0001_init_schema.up.sql
+
+      # Laravel's own tables (sessions, password_reset_tokens, cache, jobs,
+      # users.remember_token) layer on top via the normal migrator.
+      - name: Laravel migrations
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: branchledger
+          DB_USERNAME: branchledger
+          DB_PASSWORD: branchledger_dev
+        run: php artisan migrate --force
+
+      - name: Pint (code style)
+        run: vendor/bin/pint --test
+
+      - name: PHPUnit
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: branchledger
+          DB_USERNAME: branchledger
+          DB_PASSWORD: branchledger_dev
+          SESSION_DRIVER: array
+        run: php artisan test

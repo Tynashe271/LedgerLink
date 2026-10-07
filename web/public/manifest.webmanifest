@@ -1,0 +1,13 @@
+{
+    "name": "BranchLedger",
+    "short_name": "BranchLedger",
+    "description": "Multi-branch accounting with offline capture and sync.",
+    "start_url": "/dashboard",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#f5f6fa",
+    "theme_color": "#15192e",
+    "icons": [
+        { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }
+    ]
+}
