@@ -78,6 +78,11 @@ class WorkspaceController extends Controller
         return $this->render($request, 'workspace.reports', 'Reports');
     }
 
+    public function settings(Request $request): View
+    {
+        return $this->render($request, 'workspace.settings', 'Settings');
+    }
+
     private function render(Request $request, string $view, string $title): View
     {
         $companyId = $request->session()->get('current_company_id');

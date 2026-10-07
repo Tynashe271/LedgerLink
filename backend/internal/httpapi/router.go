@@ -19,6 +19,7 @@ import (
 	"github.com/ledgerlink/branchledger/backend/internal/listings"
 	"github.com/ledgerlink/branchledger/backend/internal/reconciliation"
 	"github.com/ledgerlink/branchledger/backend/internal/reporting"
+	"github.com/ledgerlink/branchledger/backend/internal/settings"
 	"github.com/ledgerlink/branchledger/backend/internal/sync"
 )
 
@@ -40,6 +41,7 @@ type Deps struct {
 	ListingsSvc       *listings.Service
 	CatalogSvc        *catalog.Service
 	ReconciliationSvc *reconciliation.Service
+	SettingsSvc       *settings.Service
 }
 
 // NewRouter builds the complete /api/v1 surface. Every route requires a valid
@@ -75,6 +77,16 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/reconciliation/items/{id}/match", handleMatchStatementItem(deps))
 		r.Post("/reconciliation/items/{id}/unmatch", handleUnmatchStatementItem(deps))
 		r.Post("/reconciliation/auto-match", handleAutoMatch(deps))
+
+		r.Get("/settings/company", handleGetCompanyProfile(deps))
+		r.Put("/settings/company", handleUpdateCompanyProfile(deps))
+		r.Get("/settings/accounts", handleListSettingsAccounts(deps))
+		r.Post("/settings/accounts", handleAddAccount(deps))
+		r.Get("/settings/devices", handleListDevices(deps))
+		r.Post("/settings/devices/{id}/revoke", handleRevokeDevice(deps))
+		r.Post("/settings/devices/{id}/set-offline-writer", handleSetOfflineWriter(deps))
+		r.Get("/settings/memberships", handleListMemberships(deps))
+		r.Post("/settings/memberships/{id}/approval-limit", handleSetApprovalLimit(deps))
 
 		r.Get("/products", handleListProducts(deps))
 		r.Post("/products", handleCreateProduct(deps))

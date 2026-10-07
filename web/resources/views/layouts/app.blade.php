@@ -162,6 +162,8 @@
             @if(($role ?? null) !== 'staff')
                 <div class="section-label">Review</div>
                 <a href="{{ route('workspace.approvals') }}" class="{{ request()->routeIs('workspace.approvals') ? 'active' : '' }}">Approvals</a>
+                <div class="section-label">Admin</div>
+                <a href="{{ route('workspace.settings') }}" class="{{ request()->routeIs('workspace.settings') ? 'active' : '' }}">Settings</a>
             @endif
         </nav>
     </aside>
