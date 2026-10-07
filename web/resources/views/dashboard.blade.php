@@ -1,6 +1,33 @@
 @extends('layouts.app')
 @section('title', $company->name . ' · BranchLedger')
 @section('body')
+<style>
+    /* Categorical slots for the expense-composition donut (dataviz skill's
+       validated default palette — fixed order, never cycled, so a 6th
+       category never invents a new hue). "Other" folds any categories past
+       slot 5 into one neutral bucket rather than seating a 7th+ hue. */
+    .viz-donut {
+        --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+        --series-4: #eda100; --series-5: #e87ba4; --series-other: #9a988f;
+        --donut-gap: #ffffff; /* matches .panel's background so wedges separate */
+    }
+    .donut-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+    .donut-row svg { flex-shrink: 0; }
+    .donut-row svg path { cursor: pointer; }
+    .donut-row svg path:hover, .donut-row svg path:focus { opacity: 0.85; outline: none; }
+    .donut-legend { flex: 1; min-width: 220px; border-collapse: collapse; }
+    .donut-legend td { padding: 5px 0; font-size: 13px; border: none; }
+    .donut-legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 8px; flex-shrink: 0; }
+    .donut-legend .cat-cell { display: flex; align-items: center; color: var(--text); }
+    .donut-legend .num-cell { text-align: right; color: var(--muted); white-space: nowrap; }
+    .donut-tooltip {
+        position: fixed; background: #16182b; color: #fff; font-size: 12.5px;
+        padding: 6px 10px; border-radius: 6px; pointer-events: none; z-index: 20;
+        display: none; white-space: nowrap;
+    }
+    .donut-tooltip strong { font-weight: 700; }
+</style>
+<div id="donut-tooltip" class="donut-tooltip" role="status"></div>
 <h1>Manager overview</h1>
 <p class="page-subtitle">
     Posted-journal totals only &mdash; never provisional/offline-pending records
@@ -47,7 +74,7 @@
     </div>
     <div class="panel">
         <h2>Where spending occurs</h2>
-        <div id="expense-bars"><p class="muted">No expenses posted in this period.</p></div>
+        <div id="expense-composition"><p class="muted">No expenses posted in this period.</p></div>
     </div>
 </div>
 
@@ -119,6 +146,115 @@ function renderBars(containerId, items, labelFn, valueFn) {
             <div class="bar-value">${money(v)}</div>
         </div>`;
     }).join('');
+}
+
+// Part-to-whole composition, <= 6 segments at a glance (dataviz skill
+// anti-patterns: "A donut/pie for comparing close values" is wrong, but
+// "part-to-whole at a glance, <= 6 segments" is the valid use — which is
+// exactly System Documentation 5.8/5.10's "a small doughnut shows positive
+// expense categories").
+const DONUT_SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5'];
+
+function polarToCartesian(cx, cy, r, angleDeg) {
+    const rad = (angleDeg - 90) * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
+    const startOuter = polarToCartesian(cx, cy, rOuter, endAngle);
+    const endOuter = polarToCartesian(cx, cy, rOuter, startAngle);
+    const startInner = polarToCartesian(cx, cy, rInner, startAngle);
+    const endInner = polarToCartesian(cx, cy, rInner, endAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    return `M${startOuter.x},${startOuter.y} A${rOuter},${rOuter} 0 ${largeArc} 0 ${endOuter.x},${endOuter.y} `
+         + `L${startInner.x},${startInner.y} A${rInner},${rInner} 0 ${largeArc} 1 ${endInner.x},${endInner.y} Z`;
+}
+
+function renderExpenseComposition(items) {
+    const el = document.getElementById('expense-composition');
+
+    if (!items.length) {
+        el.innerHTML = '<p class="muted">No expenses posted in this period.</p>';
+        return;
+    }
+
+    // Negative amounts (credit-note-style adjustments) aren't a positive
+    // composition anymore — spec 5.10: "Negative results use bar or line
+    // charts." Fall back to the bar form rather than draw a misleading slice.
+    if (items.some(i => Number(i.amount) < 0)) {
+        el.innerHTML = '<div id="expense-bars"></div>';
+        renderBars('expense-bars', items, i => i.account_name, i => Number(i.amount));
+        return;
+    }
+
+    const sorted = [...items].sort((a, b) => Number(b.amount) - Number(a.amount));
+    const top = sorted.slice(0, 5);
+    const rest = sorted.slice(5);
+    const segments = top.map((i, idx) => ({
+        label: i.account_name,
+        amount: Number(i.amount),
+        colorVar: `var(${DONUT_SLOTS[idx]})`,
+    }));
+    if (rest.length) {
+        segments.push({
+            label: `Other (${rest.length})`,
+            amount: rest.reduce((sum, i) => sum + Number(i.amount), 0),
+            colorVar: 'var(--series-other)',
+        });
+    }
+
+    const total = segments.reduce((sum, s) => sum + s.amount, 0);
+    if (total <= 0) {
+        el.innerHTML = '<p class="muted">No expenses posted in this period.</p>';
+        return;
+    }
+
+    const cx = 70, cy = 70, rOuter = 68, rInner = 40;
+    const gapDeg = segments.length > 1 ? 1.5 : 0;
+    let angle = 0;
+    const paths = segments.map(s => {
+        const sweep = (s.amount / total) * 360;
+        const start = angle + gapDeg / 2;
+        const end = angle + sweep - gapDeg / 2;
+        angle += sweep;
+        const pct = (s.amount / total) * 100;
+        const label = `${s.label}: ${money(s.amount)} (${pct.toFixed(1)}%)`;
+        return `<path d="${donutArcPath(cx, cy, rOuter, rInner, Math.max(start, 0), Math.max(end, start))}"
+            fill="${s.colorVar}" stroke="var(--donut-gap)" stroke-width="2"
+            tabindex="0" role="img" aria-label="${escapeHtml(label)}" data-tooltip="${escapeHtml(label)}"></path>`;
+    }).join('');
+
+    const legend = segments.map(s => {
+        const pct = (s.amount / total) * 100;
+        return `<tr>
+            <td class="cat-cell"><span class="swatch" style="background:${s.colorVar}"></span>${escapeHtml(s.label)}</td>
+            <td class="num-cell">${money(s.amount)} &middot; ${pct.toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="donut-row viz-donut">
+            <svg viewBox="0 0 140 140" width="140" height="140" role="img" aria-label="Expense composition by category">${paths}</svg>
+            <table class="donut-legend"><tbody>${legend}</tbody></table>
+        </div>`;
+
+    const tooltip = document.getElementById('donut-tooltip');
+    el.querySelectorAll('path[data-tooltip]').forEach(path => {
+        const show = (evt) => {
+            tooltip.innerHTML = `<strong>${escapeHtml(path.getAttribute('data-tooltip'))}</strong>`;
+            tooltip.style.display = 'block';
+            const x = evt.clientX !== undefined ? evt.clientX : path.getBoundingClientRect().left;
+            const y = evt.clientY !== undefined ? evt.clientY : path.getBoundingClientRect().top;
+            tooltip.style.left = (x + 14) + 'px';
+            tooltip.style.top = (y + 14) + 'px';
+        };
+        const hide = () => { tooltip.style.display = 'none'; };
+        path.addEventListener('pointermove', show);
+        path.addEventListener('pointerenter', show);
+        path.addEventListener('pointerleave', hide);
+        path.addEventListener('focus', show);
+        path.addEventListener('blur', hide);
+    });
 }
 
 function renderTrend(points) {
@@ -225,13 +361,7 @@ async function loadDashboard() {
         branchBarsEl.innerHTML = '<p class="muted">Select "All branches" to compare branch performance.</p>';
     }
 
-    const expenseBreakdown = body.expense_breakdown || [];
-    const expenseBarsEl = document.getElementById('expense-bars');
-    if (expenseBreakdown.length) {
-        renderBars('expense-bars', expenseBreakdown, e => e.account_name, e => Number(e.amount));
-    } else {
-        expenseBarsEl.innerHTML = '<p class="muted">No expenses posted in this period.</p>';
-    }
+    renderExpenseComposition(body.expense_breakdown || []);
 
     renderTrend(body.daily_trend || []);
 
