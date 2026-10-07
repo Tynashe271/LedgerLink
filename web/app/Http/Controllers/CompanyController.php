@@ -14,9 +14,22 @@ use Illuminate\View\View;
  */
 class CompanyController extends Controller
 {
-    public function select(Request $request): View
+    public function select(Request $request): View|RedirectResponse
     {
         $memberships = $request->user()->activeMemberships()->with('company')->get();
+
+        // Picking is only a real decision when there's more than one
+        // company to choose from — most users (everyone who registered
+        // their own company and hasn't been invited anywhere else) have
+        // exactly one, so forcing a click here on every login is pure
+        // friction. Multi-company users still see the picker as before.
+        if ($memberships->count() === 1) {
+            $only = $memberships->first();
+            $request->session()->put('current_company_id', $only->company_id);
+            $request->session()->put('current_company_role', $only->role);
+
+            return redirect()->intended(route('dashboard'));
+        }
 
         return view('companies.select', ['memberships' => $memberships]);
     }
