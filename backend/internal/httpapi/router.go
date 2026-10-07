@@ -59,6 +59,8 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/sync/push", handleSyncPush(deps))
 		r.Get("/sync/pull", handleSyncPull(deps))
 		r.Get("/dashboard", handleDashboard(deps))
+		r.Get("/reports/trial-balance", handleTrialBalance(deps))
+		r.Get("/reports/ageing", handleAgeing(deps))
 
 		r.Get("/transactions", handleListTransactions(deps))
 		r.Post("/transactions", handlePostTransaction(deps))

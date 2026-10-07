@@ -36,6 +36,9 @@ type fakeStore struct {
 	largeTransactions    []LargeTransactionAlert
 	lowStock             []LowStockAlert
 	overdueDebts         []OverdueDebtAlert
+
+	trialBalanceLines []TrialBalanceLine
+	ageingSourceRows  []OverdueDebtAlert
 }
 
 func (f *fakeStore) PeriodMovements(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowed []uuid.UUID, from, to time.Time) (PeriodTotals, error) {
@@ -82,6 +85,12 @@ func (f *fakeStore) LowStockAlerts(ctx context.Context, companyID uuid.UUID, bra
 }
 func (f *fakeStore) OverdueDebtAlerts(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowed []uuid.UUID) ([]OverdueDebtAlert, error) {
 	return f.overdueDebts, nil
+}
+func (f *fakeStore) TrialBalanceLines(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowed []uuid.UUID, asOf time.Time) ([]TrialBalanceLine, error) {
+	return f.trialBalanceLines, nil
+}
+func (f *fakeStore) AgeingSourceRows(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowed []uuid.UUID, asOf time.Time) ([]OverdueDebtAlert, error) {
+	return f.ageingSourceRows, nil
 }
 
 // TestGrossAndNetProfitArithmetic matches the architecture's definitions

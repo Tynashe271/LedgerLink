@@ -54,16 +54,16 @@ type Result struct {
 	ReportingCurrency string
 	GeneratedAt       time.Time
 
-	Revenue            decimal.Decimal
-	CostOfSales        decimal.Decimal
-	GrossProfit        decimal.Decimal
-	OperatingExpenses  decimal.Decimal
-	NetProfit          decimal.Decimal
+	Revenue           decimal.Decimal
+	CostOfSales       decimal.Decimal
+	GrossProfit       decimal.Decimal
+	OperatingExpenses decimal.Decimal
+	NetProfit         decimal.Decimal
 
-	CashBalance   decimal.Decimal
-	BankBalance   decimal.Decimal
-	Receivables   decimal.Decimal
-	Payables      decimal.Decimal
+	CashBalance decimal.Decimal
+	BankBalance decimal.Decimal
+	Receivables decimal.Decimal
+	Payables    decimal.Decimal
 
 	Branches []BranchFreshness
 
@@ -133,14 +133,14 @@ type LowStockAlert struct {
 // OverdueDebtAlert is one customer with an outstanding balance and at least
 // one credit sale past due.
 type OverdueDebtAlert struct {
-	CustomerName    string
+	CustomerName      string
 	OutstandingAmount decimal.Decimal
 	OldestDueDate     time.Time
 }
 
 // RejectedOperationAlert is one recently rejected command.
 type RejectedOperationAlert struct {
-	BranchName string
+	BranchName  string
 	CommandType string
 	ErrorCode   string
 	OccurredAt  time.Time
@@ -244,6 +244,19 @@ type Store interface {
 	// OverdueDebtAlerts lists customers with an outstanding balance and a
 	// credit sale past due, in scope.
 	OverdueDebtAlerts(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowedBranches []uuid.UUID) ([]OverdueDebtAlert, error)
+
+	// TrialBalanceLines returns every active account's net debit/credit
+	// balance from posted journal lines through `asOf`, same scoping as
+	// BalancesAsOf but across the whole chart of accounts rather than the
+	// four balance-sheet accounts the dashboard shows.
+	TrialBalanceLines(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowedBranches []uuid.UUID, asOf time.Time) ([]TrialBalanceLine, error)
+
+	// AgeingSourceRows lists every customer with a positive outstanding
+	// balance and at least one due credit sale through `asOf`, same shape
+	// and the same approximation as OverdueDebtAlerts (see that method's doc
+	// comment) but unfiltered by whether the oldest due date has actually
+	// passed yet — Service.Ageing buckets that itself.
+	AgeingSourceRows(ctx context.Context, companyID uuid.UUID, branchID *uuid.UUID, allowedBranches []uuid.UUID, asOf time.Time) ([]OverdueDebtAlert, error)
 }
 
 // PeriodTotals and BalanceTotals are the raw aggregates the store returns;

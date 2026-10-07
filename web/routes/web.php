@@ -49,6 +49,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/customers', [WorkspaceController::class, 'customers'])->name('workspace.customers');
         Route::get('/stock', [WorkspaceController::class, 'stock'])->name('workspace.stock');
         Route::get('/reconciliation', [WorkspaceController::class, 'reconciliation'])->name('workspace.reconciliation');
+        Route::get('/reports', [WorkspaceController::class, 'reports'])->name('workspace.reports');
 
         // The same-origin API gateway (architecture: "Laravel routes /api
         // requests through an authenticated gateway to Go"). Stays under the

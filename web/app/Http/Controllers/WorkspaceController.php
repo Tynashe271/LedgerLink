@@ -73,6 +73,11 @@ class WorkspaceController extends Controller
         return $this->render($request, 'workspace.reconciliation', 'Reconciliation');
     }
 
+    public function reports(Request $request): View
+    {
+        return $this->render($request, 'workspace.reports', 'Reports');
+    }
+
     private function render(Request $request, string $view, string $title): View
     {
         $companyId = $request->session()->get('current_company_id');
