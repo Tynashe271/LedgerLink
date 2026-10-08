@@ -127,6 +127,16 @@
         #sync-status .dot.offline { background: var(--danger); }
         #sync-status .dot.pending { background: var(--warn); }
 
+        .alerts-trigger { position: relative; }
+        .alerts-popup {
+            position: absolute; top: calc(100% + 8px); right: 0; width: 360px; max-height: 420px;
+            overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+            box-shadow: 0 8px 24px rgba(16,18,40,0.12); z-index: 30; padding: 10px;
+        }
+        .alerts-popup .errors, .alerts-popup .alert-warn { margin-bottom: 8px; font-size: 12.5px; }
+        .alerts-popup .errors:last-child, .alerts-popup .alert-warn:last-child { margin-bottom: 0; }
+        .alerts-popup-footer { display: block; text-align: center; font-size: 12.5px; padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--border); }
+
         .muted { color: var(--muted); font-size: 12.5px; }
         code { background: #f0f1f6; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
@@ -147,7 +157,6 @@
         <nav>
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Overview</a>
             <a href="{{ route('branch-overview') }}" class="{{ request()->routeIs('branch-overview') ? 'active' : '' }}">Branch overview</a>
-            <a href="{{ route('workspace.alerts') }}" class="{{ request()->routeIs('workspace.alerts') ? 'active' : '' }}">Alerts</a>
             <div class="section-label">Daily operations</div>
             <a href="{{ route('workspace.transactions') }}" class="{{ request()->routeIs('workspace.transactions') ? 'active' : '' }}">Transactions</a>
             <a href="{{ route('workspace.sales') }}" class="{{ request()->routeIs('workspace.sales') ? 'active' : '' }}">Sales</a>
@@ -181,6 +190,16 @@
                     <span class="dot" id="sync-dot"></span>
                     <span id="sync-label">Checking&hellip;</span>
                 </a>
+                <div class="alerts-trigger">
+                    <button type="button" id="alerts-bell-btn" class="secondary" style="width:auto; margin-top:0; position:relative;">
+                        Alerts
+                        <span id="alerts-badge" class="badge badge-stale" style="display:none; margin-left:4px;"></span>
+                    </button>
+                    <div id="alerts-popup" class="alerts-popup" style="display:none;">
+                        <div id="alerts-popup-body"><p class="muted">Loading&hellip;</p></div>
+                        <a href="{{ route('workspace.alerts') }}" class="alerts-popup-footer">View all alerts</a>
+                    </div>
+                </div>
                 <form method="POST" action="{{ route('logout') }}" style="display:inline;">@csrf<button type="submit" style="width:auto; background:transparent; color:#6b7280; border:1px solid #e2e4ea; margin-top:0;">Sign out</button></form>
             </span>
         </header>
@@ -223,6 +242,81 @@
     setInterval(updateStatusDot, 5000);
     window.addEventListener('online', updateStatusDot);
     window.addEventListener('offline', updateStatusDot);
+
+    // Alerts popup (topbar, next to Sign out) — same critical/warnings split
+    // and same GET /api/v1/dashboard source the dedicated Alerts page uses,
+    // just surfaced globally instead of requiring a page visit to see.
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function money(v) { const n = Number(v); return (n < 0 ? '-$' + Math.abs(n).toFixed(2) : '$' + n.toFixed(2)); }
+
+    async function loadAlertsPopup() {
+        const btn = document.getElementById('alerts-bell-btn');
+        if (!btn) return; // no alerts bell on guest/pre-company pages
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        const to = new Date().toISOString().slice(0, 10);
+        const from = to.slice(0, 8) + '01';
+
+        let body;
+        try {
+            const res = await fetch(`/api/v1/dashboard?from=${from}&to=${to}`, {
+                headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                credentials: 'same-origin',
+            });
+            body = await res.json();
+        } catch (e) {
+            return;
+        }
+
+        const critical = [];
+        const warnings = [];
+        if (body.negative_cash_balance) critical.push('Cash balance is negative. This should not happen in a cash business &mdash; investigate immediately.');
+        if (body.negative_bank_balance) critical.push('Bank balance is negative &mdash; investigate immediately.');
+        (body.rejected_operation_alerts || []).forEach(r => {
+            critical.push(`${escapeHtml(r.branch_name)}: a ${escapeHtml(r.command_type)} was rejected (${escapeHtml(r.error_code)}) at ${new Date(r.occurred_at).toLocaleString()}.`);
+        });
+        (body.cash_difference_alerts || []).forEach(a => {
+            critical.push(`${escapeHtml(a.branch_name)} had a cash difference of ${money(a.discrepancy)} on ${a.close_date} (${a.currency}), not yet approved.`);
+        });
+        (body.overdue_debt_alerts || []).forEach(o => {
+            critical.push(`${escapeHtml(o.customer_name)} owes ${money(o.outstanding_amount)}, overdue since ${o.oldest_due_date}.`);
+        });
+        const staleBranches = (body.branches || []).filter(b => b.stale);
+        if (staleBranches.length) warnings.push(`${staleBranches.length} branch(es) have delayed sync updates.`);
+        if (body.pending_approvals_count > 0) warnings.push(`${body.pending_approvals_count} request(s) are awaiting approval.`);
+        (body.large_transaction_alerts || []).forEach(l => {
+            warnings.push(`${escapeHtml(l.branch_name)}: an unusually large ${escapeHtml(l.document_type)} of ${money(l.amount)} was posted on ${l.date}.`);
+        });
+        (body.low_stock_alerts || []).forEach(s => {
+            warnings.push(`${escapeHtml(s.branch_name)}: ${escapeHtml(s.product_name)} is low (${s.quantity} ${escapeHtml(s.unit)} left).`);
+        });
+
+        const total = critical.length + warnings.length;
+        const badge = document.getElementById('alerts-badge');
+        badge.style.display = total ? 'inline-block' : 'none';
+        badge.textContent = total;
+
+        const popupBody = document.getElementById('alerts-popup-body');
+        popupBody.innerHTML = total
+            ? critical.map(a => `<div class="errors">${a}</div>`).join('') + warnings.map(a => `<div class="alert-warn">${a}</div>`).join('')
+            : '<p class="muted">Nothing needs attention right now.</p>';
+    }
+
+    const alertsBtn = document.getElementById('alerts-bell-btn');
+    const alertsPopup = document.getElementById('alerts-popup');
+    if (alertsBtn && alertsPopup) {
+        alertsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const opening = alertsPopup.style.display === 'none';
+            alertsPopup.style.display = opening ? 'block' : 'none';
+            if (opening) loadAlertsPopup();
+        });
+        document.addEventListener('click', (e) => {
+            if (!alertsPopup.contains(e.target) && e.target !== alertsBtn) alertsPopup.style.display = 'none';
+        });
+    }
+    loadAlertsPopup();
+    setInterval(loadAlertsPopup, 60000);
 </script>
 </body>
 </html>
