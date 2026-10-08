@@ -55,14 +55,15 @@
     <div id="dashboard-stale-warning"></div>
 </div>
 
-<div class="panel">
-    <h2>Profit &amp; loss, this period</h2>
-    <div id="pl-stats" class="grid grid-stats"></div>
-</div>
-
-<div class="panel">
-    <h2>Balances, as of today</h2>
-    <div id="balance-stats" class="grid grid-stats"></div>
+<div class="grid grid-2">
+    <div class="panel">
+        <h2>Profit &amp; loss, this period</h2>
+        <div id="pl-stats" class="grid grid-stats"></div>
+    </div>
+    <div class="panel">
+        <h2>Balances, as of today</h2>
+        <div id="balance-stats" class="grid grid-stats"></div>
+    </div>
 </div>
 
 <div class="grid grid-2">
@@ -76,14 +77,15 @@
     </div>
 </div>
 
-<div class="panel">
-    <h2>Revenue trend</h2>
-    <div id="trend-chart"></div>
-</div>
-
-<div class="panel">
-    <h2>Branch freshness</h2>
-    <div id="branch-freshness"></div>
+<div class="grid grid-2">
+    <div class="panel">
+        <h2>Revenue trend</h2>
+        <div id="trend-chart"></div>
+    </div>
+    <div class="panel">
+        <h2>Branch freshness</h2>
+        <div id="branch-freshness"></div>
+    </div>
 </div>
 
 <script>
