@@ -55,8 +55,6 @@
     <div id="dashboard-stale-warning"></div>
 </div>
 
-<div id="alerts-panel"></div>
-
 <div class="panel">
     <h2>Profit &amp; loss, this period</h2>
     <div id="pl-stats" class="grid grid-stats"></div>
@@ -306,43 +304,8 @@ async function loadDashboard() {
 
     const staleBranches = (body.branches || []).filter(b => b.stale);
     document.getElementById('dashboard-stale-warning').innerHTML = staleBranches.length
-        ? `<div class="errors" style="margin-top:12px;">${staleBranches.length} branch(es) have not synced recently &mdash; company totals above may be incomplete. A stale branch's zero displayed sales does not mean zero actual sales.</div>`
+        ? `<div class="errors" style="margin-top:12px;">${staleBranches.length} branch(es) have not synced recently &mdash; company totals above may be incomplete. A stale branch's zero displayed sales does not mean zero actual sales. <a href="/alerts">See alerts</a>.</div>`
         : '';
-
-    // Alerts: critical (needs action now) vs informational (worth reviewing).
-    const critical = [];
-    const warnings = [];
-
-    if (body.negative_cash_balance) critical.push('Cash balance is negative. This should not happen in a cash business &mdash; investigate immediately.');
-    if (body.negative_bank_balance) critical.push('Bank balance is negative &mdash; investigate immediately.');
-    (body.rejected_operation_alerts || []).forEach(r => {
-        critical.push(`${escapeHtml(r.branch_name)}: a ${escapeHtml(r.command_type)} was rejected (${escapeHtml(r.error_code)}) at ${new Date(r.occurred_at).toLocaleString()}.`);
-    });
-    (body.cash_difference_alerts || []).forEach(a => {
-        critical.push(`${escapeHtml(a.branch_name)} had a cash difference of ${money(a.discrepancy)} on ${a.close_date} (${a.currency}), not yet approved.`);
-    });
-
-    if (staleBranches.length) warnings.push(`${staleBranches.length} branch(es) have delayed sync updates.`);
-    if (body.pending_approvals_count > 0) warnings.push(`${body.pending_approvals_count} request(s) are awaiting approval. <a href="/approvals">Review</a>.`);
-    (body.large_transaction_alerts || []).forEach(l => {
-        warnings.push(`${escapeHtml(l.branch_name)}: an unusually large ${escapeHtml(l.document_type)} of ${money(l.amount)} was posted on ${l.date}.`);
-    });
-    (body.low_stock_alerts || []).forEach(s => {
-        warnings.push(`${escapeHtml(s.branch_name)}: ${escapeHtml(s.product_name)} is low (${s.quantity} ${escapeHtml(s.unit)} left, reorder point ${s.reorder_point}). <a href="/purchases">Reorder</a>.`);
-    });
-    (body.overdue_debt_alerts || []).forEach(o => {
-        critical.push(`${escapeHtml(o.customer_name)} owes ${money(o.outstanding_amount)}, overdue since ${o.oldest_due_date}. <a href="/customers">Record receipt</a>.`);
-    });
-
-    const panelEl = document.getElementById('alerts-panel');
-    if (!critical.length && !warnings.length) {
-        panelEl.innerHTML = '';
-    } else {
-        panelEl.innerHTML = `<div class="panel"><h2>Needs attention</h2>` +
-            critical.map(a => `<div class="errors">${a}</div>`).join('') +
-            warnings.map(a => `<div class="alert-warn">${a}</div>`).join('') +
-            `</div>`;
-    }
 
     document.getElementById('pl-stats').innerHTML = [
         statTile('Revenue', money(body.revenue)),

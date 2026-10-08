@@ -41,6 +41,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/dashboard', [DashboardController::class, 'show'])->name('dashboard');
         Route::get('/branch-overview', [BranchOverviewController::class, 'show'])->name('branch-overview');
+        Route::get('/alerts', [WorkspaceController::class, 'alerts'])->name('workspace.alerts');
 
         // Daily-operations screens (System Documentation 5.2 screen
         // catalogue). Each just renders its shell; data is loaded and

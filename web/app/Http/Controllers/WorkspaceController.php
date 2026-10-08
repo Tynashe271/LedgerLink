@@ -18,6 +18,11 @@ use Illuminate\View\View;
  */
 class WorkspaceController extends Controller
 {
+    public function alerts(Request $request): View
+    {
+        return $this->render($request, 'workspace.alerts', 'Alerts');
+    }
+
     public function transactions(Request $request): View
     {
         return $this->render($request, 'workspace.transactions', 'Transactions');

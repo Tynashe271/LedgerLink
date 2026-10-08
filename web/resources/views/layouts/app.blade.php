@@ -147,6 +147,7 @@
         <nav>
             <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">Overview</a>
             <a href="{{ route('branch-overview') }}" class="{{ request()->routeIs('branch-overview') ? 'active' : '' }}">Branch overview</a>
+            <a href="{{ route('workspace.alerts') }}" class="{{ request()->routeIs('workspace.alerts') ? 'active' : '' }}">Alerts</a>
             <div class="section-label">Daily operations</div>
             <a href="{{ route('workspace.transactions') }}" class="{{ request()->routeIs('workspace.transactions') ? 'active' : '' }}">Transactions</a>
             <a href="{{ route('workspace.sales') }}" class="{{ request()->routeIs('workspace.sales') ? 'active' : '' }}">Sales</a>
