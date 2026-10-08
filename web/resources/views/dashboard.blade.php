@@ -215,7 +215,13 @@ function renderExpenseComposition(items) {
     const paths = segments.map(s => {
         const sweep = (s.amount / total) * 360;
         const start = angle + gapDeg / 2;
-        const end = angle + sweep - gapDeg / 2;
+        // A segment that fills (or nearly fills) the whole ring — the only
+        // category this period, say — has start≈0 and end≈360. SVG's arc
+        // command treats those as the SAME point (sin/cos are periodic), so
+        // the path's two ends coincide and it paints nothing. Clamping just
+        // short of a full turn keeps start and end a hair apart so the arc
+        // actually renders, with no visible gap at normal ring widths.
+        const end = Math.min(angle + sweep - gapDeg / 2, start + 359.99);
         angle += sweep;
         const pct = (s.amount / total) * 100;
         const label = `${s.label}: ${money(s.amount)} (${pct.toFixed(1)}%)`;
